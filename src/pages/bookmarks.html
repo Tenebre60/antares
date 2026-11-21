@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Favoritos</title><link rel="stylesheet" href="pages.css">
+<style>.row.edit .main { display: flex; gap: 8px; } .row.edit input { flex: 1; min-width: 0; } .row[draggable=true] { cursor: grab; } .row.over { box-shadow: inset 0 2px 0 var(--accent); }</style></head>
+<body><div class="page">
+  <div class="page-head">
+    <h1><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>Favoritos</h1>
+    <input type="search" id="q" placeholder="Pesquisar favoritos">
+    <button id="import">Importar…</button>
+    <button id="export">Exportar…</button>
+  </div>
+  <div id="list"></div>
+  <p style="color:var(--muted);font-size:12.5px;margin-top:16px">Dica: arraste para reordenar. Para importar do Chrome/Edge, exporte os favoritos como HTML lá e use “Importar…”.</p>
+</div>
+<script src="common.js"></script>
+<script src="bookmarks.js"></script></body></html>

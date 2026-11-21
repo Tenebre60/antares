@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Aurora</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<header id="chrome">
+  <div id="tabstrip">
+    <div id="tabs" role="tablist"></div>
+    <button id="newtab" class="icon-btn" title="Nova aba (Ctrl+T)" aria-label="Nova aba">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <div class="drag-space"></div>
+    <span id="private-badge" hidden>
+      <svg viewBox="0 0 24 24"><path d="M3 11h18M5 11l2-6h10l2 6M7 18a3 3 0 1 0 0-.01M17 18a3 3 0 1 0 0-.01M10 18h4"/></svg>
+      Privado
+    </span>
+  </div>
+
+  <div id="toolbar">
+    <button id="back" class="icon-btn" title="Voltar (Alt+←)" aria-label="Voltar" disabled>
+      <svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+    </button>
+    <button id="forward" class="icon-btn" title="Avançar (Alt+→)" aria-label="Avançar" disabled>
+      <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+    <button id="reload" class="icon-btn" title="Recarregar (F5)" aria-label="Recarregar">
+      <svg class="i-reload" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+      <svg class="i-stop" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <button id="home" class="icon-btn" title="Página inicial (Alt+Home)" aria-label="Página inicial">
+      <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 9.5V20h4.5v-5.5h3V20H18V9.5"/></svg>
+    </button>
+
+    <div id="omnibox">
+      <span id="site-icon" title="">
+        <svg class="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <svg class="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"/></svg>
+        <svg class="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+        <svg class="i-page" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4"/></svg>
+      </span>
+      <input id="address" type="text" spellcheck="false" autocomplete="off" placeholder="Pesquise ou digite um endereço">
+      <span id="zoom-ind" title="Clique para restaurar o zoom" hidden></span>
+      <button id="popups" class="icon-btn small" title="Pop-ups bloqueados" hidden>
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 13l6 4M14 13l-6 4"/></svg>
+      </button>
+      <button id="shield" class="icon-btn small" title="Bloqueador de anúncios e rastreadores">
+        <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/></svg>
+        <span id="shield-n"></span>
+      </button>
+      <button id="star" class="icon-btn small" title="Adicionar aos favoritos (Ctrl+D)" aria-label="Favoritar">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>
+      </button>
+    </div>
+
+    <button id="downloads" class="icon-btn" title="Downloads (Ctrl+J)" aria-label="Downloads">
+      <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+      <svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg>
+    </button>
+    <button id="menu" class="icon-btn" title="Menu" aria-label="Menu">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/></svg>
+    </button>
+  </div>
+
+  <div id="bookmarksbar"></div>
+
+  <div id="findbar" hidden>
+    <svg viewBox="0 0 24 24" class="find-ico"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+    <input id="find-input" type="text" placeholder="Localizar na página" spellcheck="false">
+    <span id="find-count"></span>
+    <button id="find-prev" class="icon-btn small" title="Anterior (Shift+Enter)"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+    <button id="find-next" class="icon-btn small" title="Próximo (Enter)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button id="find-close" class="icon-btn small" title="Fechar (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div id="infobar" hidden>
+    <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M12 8v4M12 15.5v.5"/></svg>
+    <span id="infobar-text"></span>
+    <button id="infobar-more" class="link">Saiba mais</button>
+    <button id="infobar-close" class="icon-btn small" title="Dispensar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+</header>
+
+<div id="suggest" hidden></div>
+
+<script src="ui.js"></script>
+</body>
+</html>
