@@ -1,7 +1,7 @@
 'use strict';
 const {
   app, BaseWindow, WebContentsView, ipcMain, session, protocol, Menu,
-  dialog, shell, clipboard, nativeTheme, net, screen,
+  dialog, shell, clipboard, ClipboardItem, nativeTheme, net, screen,
 } = require('electron');
 // every renderer is sandboxed, even one created by mistake (Chromium refuses this when running as Linux root, e.g. in test containers)
 if (!(process.platform === 'linux' && process.getuid && process.getuid() === 0)) app.enableSandbox();
@@ -10,7 +10,13 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { FiltersEngine, Request: AbRequest } = require('@ghostery/adblocker');
 
-app.setName('Aurora');
+app.setName('Antares');
+// Antares was called Aurora before: keep using the same profile folder so bookmarks, history,
+// settings and site logins carry over after the update.
+{
+  const legacy = path.join(app.getPath('appData'), 'Aurora');
+  if (fs.existsSync(legacy) && !app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', legacy);
+}
 // never show a crash dialog for an unexpected error in the browser process; log it instead
 process.on('uncaughtException', (err) => console.error('uncaught', err));
 process.on('unhandledRejection', (err) => console.error('unhandled', err));
@@ -19,18 +25,18 @@ if (process.platform === 'win32') app.setAppUserModelId('com.aurora.browser');
 const UI_DIR = path.join(__dirname, 'ui');
 const PAGES_DIR = path.join(__dirname, 'pages');
 const ICON = path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
-const HOME = 'aurora://newtab';
+const HOME = 'antares://newtab';
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'aurora', privileges: { standard: true, secure: true, supportFetchAPI: true } },
-  { scheme: 'aurora-ui', privileges: { standard: true, secure: true } },
+  { scheme: 'antares', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'antares-ui', privileges: { standard: true, secure: true } },
 ]);
 // The browser's own interface lives in a separate session that web pages never share.
 let uiSession = null;
 function getUiSession() {
   if (uiSession) return uiSession;
-  uiSession = session.fromPartition('aurora-ui-chrome');
-  uiSession.protocol.handle('aurora-ui', (req) => {
+  uiSession = session.fromPartition('antares-ui-chrome');
+  uiSession.protocol.handle('antares-ui', (req) => {
     const u = new URL(req.url);
     const file = path.normalize(path.join(UI_DIR, decodeURIComponent(u.pathname)));
     const ext = path.extname(file);
@@ -42,7 +48,7 @@ function getUiSession() {
   uiSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (d, cb) => cb({ cancel: d.resourceType !== 'image' }));
   return uiSession;
 }
-const uiUrl = (file, query) => `aurora-ui://chrome/${file}?${new URLSearchParams(query)}`;
+const uiUrl = (file, query) => `antares-ui://chrome/${file}?${new URLSearchParams(query)}`;
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
@@ -99,7 +105,7 @@ const DEFAULT_SETTINGS = {
   searchEngine: 'google',
   homepage: HOME,
   startup: 'newtab', // newtab | restore
-  showBookmarksBar: true,
+  showBookmarksBar: false,
   theme: 'system',
   askDownloadLocation: false,
   blockTrackers: true,
@@ -113,9 +119,38 @@ const DEFAULT_SETTINGS = {
   lastUpdateCheck: 0,
   tabSleep: true,
   zoom: {},
+  layoutMode: 'auto', // auto (Órbita/Foco by window state) | orbit | focus
+  rightPanel: true,
+  spaces: null,
+  shortcuts: null,
 };
-const BUILD_DATE = '2026-11-18';
+const BUILD_DATE = '2026-11-21';
 let settings, bookmarks, history;
+let orbits = [], missions = [], readLater = [];
+const thumbs = new Map(); // url -> small JPEG data URL of the page (for "Recentes")
+const DEFAULT_SPACES = [
+  { id: 'pessoal', name: 'Pessoal', color: '#ff7a1a' },
+  { id: 'trabalho', name: 'Trabalho', color: '#ffb020' },
+  { id: 'estudos', name: 'Estudos', color: '#4fa3ff' },
+  { id: 'viagem', name: 'Viagem', color: '#3ad29f' },
+];
+const DEFAULT_SHORTCUTS = [
+  { title: 'YouTube', url: 'https://www.youtube.com' }, { title: 'GitHub', url: 'https://github.com' },
+  { title: 'Figma', url: 'https://www.figma.com' }, { title: 'Gmail', url: 'https://mail.google.com' },
+  { title: 'Notion', url: 'https://www.notion.so' },
+];
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const spaceList = () => (Array.isArray(settings.spaces) && settings.spaces.length ? settings.spaces : DEFAULT_SPACES);
+function broadcastSpaces() { for (const w of BrowserWin.all) w.sendSpaces(); }
+function broadcastCollections() { for (const w of BrowserWin.all) w.send('collections', collectionsSummary()); }
+function collectionsSummary() {
+  const m = [...missions].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  return {
+    orbits: orbits.map((o) => ({ id: o.id, name: o.name, space: o.space, count: (o.tabs || []).length })),
+    missions: m.map((x) => ({ id: x.id, title: x.title, pages: (x.pages || []).length })),
+    readLater: readLater.length,
+  };
+}
 
 const SEARCH = {
   google: { name: 'Google', url: 'https://www.google.com/search?q=%s' },
@@ -129,7 +164,7 @@ function toUrl(input) {
   const t = String(input || '').trim();
   if (!t) return null;
   if (/^javascript:/i.test(t)) return null;
-  if (/^(https?|file|aurora|about|data|view-source):/i.test(t)) return t;
+  if (/^(https?|file|antares|about|data|view-source):/i.test(t)) return t;
   if (/^[a-z]:\\/i.test(t) || t.startsWith('/')) return pathToFileURL(t).toString();
   if (!/\s/.test(t) && (/^localhost(:\d+)?(\/|$)/i.test(t) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/|$)/.test(t) ||
       /^[^\s/]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(t))) {
@@ -172,7 +207,7 @@ const DANGEROUS_EXT = new Set(('exe msi msix msixbundle appx appxbundle bat cmd 
 const isDangerousFile = (name) => DANGEROUS_EXT.has(path.extname(name || '').slice(1).toLowerCase());
 // Links to other programs (mailto:, tel:, zoommtg:…) are allowed after asking, except these,
 // which are known to be abused to run code or reach local files.
-const BLOCKED_SCHEMES = new Set(('file javascript vbscript data blob about chrome devtools aurora aurora-ui jar shell mk its ms-its hcp help res ' +
+const BLOCKED_SCHEMES = new Set(('file javascript vbscript data blob about chrome devtools aurora antares antares-ui jar shell mk its ms-its hcp help res ' +
   'search search-ms ms-search ms-msdt ms-officecmd ms-cxh ms-cxh-full ms-appinstaller ms-settings ms-gamebarservices ms-diagnostics ' +
   'ms-quick-assist ms-remoteassistance ldap ldaps cdl smb nfs').split(' '));
 const ASK_PERMS = ['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read', 'display-capture', 'idle-detection', 'speaker-selection'];
@@ -191,7 +226,7 @@ const pageSet = (map, wc) => { let s = map.get(wc); if (!s) { s = new Set(); map
 const clientCertChoice = new Map(); // host -> chosen certificate fingerprint (this run only)
 
 /* ----------------------------------------------------------- trust tracking */
-// Internal pages (aurora://) get the privileged API only when the browser itself
+// Internal pages (antares://) get the privileged API only when the browser itself
 // loaded them (address bar, menu, back/forward) or another trusted internal page did.
 const trusted = new WeakSet();
 const uiContents = new WeakSet();
@@ -204,21 +239,21 @@ function guardWebContents(wc) {
     if (!d.isMainFrame || d.isSameDocument) return;
     const init = d.initiator;
     let ok = !init; // started by the browser itself (address bar, menus, back/forward, reload)
-    try { if (init && String(init.url).startsWith('aurora://') && trusted.has(wc)) ok = true; } catch {}
+    try { if (init && String(init.url).startsWith('antares://') && trusted.has(wc)) ok = true; } catch {}
     pendingNav.set(wc, { url: String(d.url), ok });
   });
   wc.on('did-redirect-navigation', (d) => { if (d.isMainFrame) { const p = pendingNav.get(wc); if (p) p.ok = false; } });
   wc.on('did-navigate', (e, url) => {
     pageDenied.delete(wc); pageAllowed.delete(wc); autoDownloads.delete(wc);
     const p = pendingNav.get(wc); pendingNav.delete(wc);
-    if (String(url).startsWith('aurora://') && p && p.ok && p.url.split('#')[0] === String(url).split('#')[0]) trusted.add(wc);
+    if (String(url).startsWith('antares://') && p && p.ok && p.url.split('#')[0] === String(url).split('#')[0]) trusted.add(wc);
     else trusted.delete(wc);
   });
-  wc.on('will-redirect', (d) => { if (String(d.url).startsWith('aurora://')) d.preventDefault(); });
+  wc.on('will-redirect', (d) => { if (String(d.url).startsWith('antares://')) d.preventDefault(); });
   wc.on('will-navigate', (d) => {
     if (uiContents.has(wc)) { d.preventDefault(); return; }
     const target = String(d.url);
-    if (target.startsWith('aurora://') && !(wc.getURL().startsWith('aurora://') && trusted.has(wc))) d.preventDefault();
+    if (target.startsWith('antares://') && !(wc.getURL().startsWith('antares://') && trusted.has(wc))) d.preventDefault();
     if (/^(file|view-source|chrome|devtools):/i.test(target) && !wc.getURL().startsWith('file:')) d.preventDefault();
   });
   wc.on('will-attach-webview', (e) => e.preventDefault());
@@ -302,7 +337,7 @@ function setupSession(ses, isPrivate) {
   if (configured.has(ses)) return;
   configured.add(ses);
 
-  ses.protocol.handle('aurora', serveAurora);
+  ses.protocol.handle('antares', serveAntares);
   ses.setDevicePermissionHandler(() => false); // USB/HID/serial: never silently
   sessionGrants.set(ses, new Set());
   sessionDenies.set(ses, new Set());
@@ -320,14 +355,14 @@ function setupSession(ses, isPrivate) {
     cb(-3); // keep Chromium's own verification result
   });
 
-  ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*', 'aurora://*/*'] }, (d, cb) => {
-    if (d.url.startsWith('aurora:')) {
+  ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*', 'antares://*/*'] }, (d, cb) => {
+    if (d.url.startsWith('antares:')) {
       // internal pages answer only to browser navigations and to other internal pages;
-      // websites can't load them (no detecting Aurora, no embedding)
+      // websites can't load them (no detecting Antares, no embedding)
       if (d.resourceType === 'mainFrame') return cb({});
       let frameUrl = ''; try { frameUrl = d.frame ? d.frame.url : ''; } catch {}
       const from = frameUrl || d.referrer || '';
-      return cb({ cancel: !from.startsWith('aurora://') });
+      return cb({ cancel: !from.startsWith('antares://') });
     }
     try {
       // HTTPS-first: upgrade top-level http navigations
@@ -575,7 +610,7 @@ function broadcastDownloads() {
 const INTERNAL_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; " +
   "font-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'";
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
-async function serveAurora(req) {
+async function serveAntares(req) {
   const u = new URL(req.url);
   const host = u.hostname || 'newtab';
   let rel = (!u.pathname || u.pathname === '/') ? `${host}.html` : decodeURIComponent(u.pathname.slice(1));
@@ -602,7 +637,8 @@ const tabUrl = (t) => { try { return (t.sleeping ? '' : t.view.webContents.getUR
 function saveSession(force = false) {
   const wins = normalWindows().filter((w) => force || !w.closingWindow);
   if (!wins.length || (!force && normalWindows().some((w) => w.closingWindow))) return;
-  const urls = wins.flatMap((w) => w.tabs.map(tabUrl)).filter((u) => /^https?:/.test(u)).slice(0, 100);
+  const urls = wins.flatMap((w) => w.tabs.map((t) => ({ url: tabUrl(t), space: t.spaceId })))
+    .filter((x) => /^https?:/.test(x.url)).slice(0, 150);
   if (JSON.stringify(urls) === JSON.stringify(settings.lastSession)) return;
   settings.lastSession = urls; save('settings', settings);
 }
@@ -624,22 +660,124 @@ class BrowserWin {
     return null;
   }
 
+  /* ---------- spaces (each window shows the tabs of one Space at a time) */
+  spaceTabs(id = this.spaceId) { return this.tabs.filter((t) => t.spaceId === id); }
+  sendSpaces() {
+    const counts = {};
+    for (const t of this.tabs) counts[t.spaceId] = (counts[t.spaceId] || 0) + 1;
+    this.send('spaces', { spaces: this.isPrivate ? [{ id: 'private', name: 'Privado', color: '#a98bff' }] : spaceList(), current: this.spaceId, counts });
+  }
+  switchSpace(id, { focusTab = null } = {}) {
+    if (this.isPrivate) return;
+    if (!spaceList().some((x) => x.id === id)) return;
+    if (id === this.spaceId && !focusTab) return;
+    if (this.activeId) this.lastActiveBySpace[this.spaceId] = this.activeId;
+    if (this.split) this.exitSplit(this.activeId, { quiet: true });
+    for (const t of this.tabs) { try { this.win.contentView.removeChildView(t.view); } catch {} }
+    this.activeId = null;
+    this.spaceId = id;
+    const inSpace = this.spaceTabs(id);
+    const target = focusTab || inSpace.find((t) => t.id === this.lastActiveBySpace[id]) || inSpace[inSpace.length - 1];
+    if (target) this.activate(target.id); else this.newTab(null);
+    this.sendSpaces();
+  }
+  moveTabToSpace(t, id) {
+    if (!t || t.spaceId === id || !spaceList().some((x) => x.id === id)) return;
+    if (this.split && this.split.includes(t.id)) this.removeFromSplit(t.id);
+    const wasActive = t.id === this.activeId;
+    if (wasActive) {
+      const rest = this.spaceTabs().filter((x) => x !== t);
+      try { this.win.contentView.removeChildView(t.view); } catch {}
+      this.activeId = null;
+      t.spaceId = id;
+      if (rest.length) this.activate(rest[rest.length - 1].id); else this.newTab(null);
+    } else t.spaceId = id;
+    this.sendTabs(); this.sendSpaces();
+  }
+
+  /* ---------- split view: up to 4 pages side by side */
+  splitRects() {
+    const r = this.content; const ids = this.split || [];
+    const n = ids.length; const gap = 10; const head = 30;
+    const cells = [];
+    if (n === 4) {
+      const w = (r.width - gap) / 2, h = (r.height - gap) / 2;
+      for (let i = 0; i < 4; i++) cells.push({ x: r.x + (i % 2) * (w + gap), y: r.y + Math.floor(i / 2) * (h + gap), width: w, height: h });
+    } else {
+      const w = (r.width - gap * (n - 1)) / n;
+      for (let i = 0; i < n; i++) cells.push({ x: r.x + i * (w + gap), y: r.y, width: w, height: r.height });
+    }
+    return ids.map((id, i) => {
+      const c = cells[i];
+      return { id, head: { x: Math.round(c.x), y: Math.round(c.y), width: Math.round(c.width), height: head },
+        page: { x: Math.round(c.x), y: Math.round(c.y + head), width: Math.max(0, Math.round(c.width)), height: Math.max(0, Math.round(c.height - head)) } };
+    });
+  }
+  enterSplit(ids) {
+    ids = [...new Set(ids)].filter((id) => this.tabs.some((t) => t.id === id && t.spaceId === this.spaceId)).slice(0, 4);
+    if (ids.length < 2) return;
+    this.split = ids;
+    if (!ids.includes(this.activeId)) this.activeId = ids[0];
+    for (const t of this.tabs) { try { this.win.contentView.removeChildView(t.view); } catch {} }
+    for (const id of ids) { const t = tabById.get(id); if (t.sleeping) this.wake(t); this.win.contentView.addChildView(t.view); }
+    this.restack(); this.layout(); this.sendTabs();
+  }
+  splitAdd(tabId = null) {
+    if (this.split && this.split.length >= 4) { this.showNotice('O Split View mostra até 4 páginas ao mesmo tempo', 2500); return; }
+    const base = this.split || [this.activeId];
+    const t = tabId ? tabById.get(tabId) : this.newTab(null, { background: true });
+    if (!t) return;
+    this.enterSplit([...base, t.id]);
+    this.activeId = t.id; this.sendTabs();
+    if (!tabId) setTimeout(() => this.focusAddress(), 50);
+  }
+  removeFromSplit(id) {
+    if (!this.split) return;
+    const rest = this.split.filter((x) => x !== id);
+    const t = tabById.get(id);
+    if (t) { try { this.win.contentView.removeChildView(t.view); } catch {} }
+    if (rest.length < 2) { this.exitSplit(rest[0] || this.activeId); return; }
+    this.split = rest;
+    if (this.activeId === id) this.activeId = rest[0];
+    this.layout(); this.sendTabs();
+  }
+  exitSplit(keepId = this.activeId, { quiet = false } = {}) {
+    if (!this.split) return;
+    const ids = this.split; this.split = null;
+    for (const id of ids) { const t = tabById.get(id); if (t && id !== keepId) { try { this.win.contentView.removeChildView(t.view); } catch {} } }
+    if (quiet) return;
+    if (keepId && tabById.has(keepId)) this.activate(keepId); else { this.layout(); this.sendTabs(); }
+  }
+  restack() {
+    // pages above the browser frame; the frame goes on top only while one of its menus is open
+    const views = this.split ? this.split.map((id) => tabById.get(id)).filter(Boolean).map((t) => t.view) : (this.active ? [this.active.view] : []);
+    for (const v of views) { try { this.win.contentView.addChildView(v); } catch {} }
+    if (this.uiOnTop) this.win.contentView.addChildView(this.ui);
+    if (this.notice && this.noticeShown) this.win.contentView.addChildView(this.notice);
+  }
+
   constructor({ isPrivate = false, urls = null } = {}) {
     this.isPrivate = isPrivate;
     // all private windows share one temporary session (like Chrome); it is discarded when the last one closes
-    if (isPrivate && !sharedPrivateSession) sharedPrivateSession = session.fromPartition(`aurora-private-${Date.now()}`);
+    if (isPrivate && !sharedPrivateSession) sharedPrivateSession = session.fromPartition(`antares-private-${Date.now()}`);
     this.ses = isPrivate ? sharedPrivateSession : session.defaultSession;
     setupSession(this.ses, isPrivate);
     this.tabs = []; this.activeId = null; this.closedTabs = [];
-    this.chromeHeight = 82; this.uiHeight = 82; this.htmlFull = false;
+    this.htmlFull = false; this.split = null; this.uiOnTop = false;
+    this.content = { x: 0, y: 120, width: 1000, height: 600 };
+    this.spaceId = isPrivate ? 'private' : (spaceList()[0] || DEFAULT_SPACES[0]).id;
+    this.lastActiveBySpace = {};
 
+    // no Windows title bar: the Antares frame draws its own controls and drag areas
     this.win = new BaseWindow({
-      width: 1280, height: 840, minWidth: 480, minHeight: 360, title: 'Aurora',
-      icon: fs.existsSync(ICON) ? ICON : undefined,
-      backgroundColor: nativeTheme.shouldUseDarkColors ? '#16171d' : '#eef0f5',
-      autoHideMenuBar: true,
+      width: 1360, height: 880, minWidth: 640, minHeight: 480, title: 'Antares',
+      icon: fs.existsSync(ICON) ? ICON : undefined, frame: false,
+      backgroundColor: '#07070a', autoHideMenuBar: true,
     });
     this.win.setMenuBarVisibility(false);
+    const sendState = () => { if (!this.win.isDestroyed()) this.send('win-state', { maximized: this.win.isMaximized(), fullscreen: this.win.isFullScreen() }); };
+    for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore']) this.win.on(ev, sendState);
+    this.sendState = sendState;
 
     this.ui = new WebContentsView({
       webPreferences: { session: getUiSession(), preload: path.join(__dirname, 'preload-ui.js'), contextIsolation: true, sandbox: true, spellcheck: false },
@@ -651,16 +789,26 @@ class BrowserWin {
     this.hookKeys(this.ui.webContents);
 
     this.ui.webContents.once('did-finish-load', () => {
-      this.send('init', { isPrivate, bookmarks, settings: publicSettings(), downloads: downloadsSummary(), platform: process.platform });
+      this.send('init', { isPrivate, bookmarks, settings: publicSettings(), downloads: downloadsSummary(), platform: process.platform, collections: collectionsSummary(), recents: recentItems() });
+      this.sendSpaces(); this.sendState();
       const msg = updateNeeded(); if (msg) this.send('update', { msg });
-      const list = urls && urls.length ? urls : [null];
-      list.forEach((u, i) => this.newTab(u, { background: i > 0 }));
-      if (list.length > 1) this.activate(this.tabs[0].id);
+      const list = (urls && urls.length ? urls : [null]).map((u) => (u && typeof u === 'object' ? u : { url: u, space: null }));
+      const valid = new Set(spaceList().map((x) => x.id));
+      for (const it of list) {
+        const sp = !isPrivate && it.space && valid.has(it.space) ? it.space : this.spaceId;
+        this.newTab(it.url, { background: true, space: sp });
+      }
+      const first = this.spaceTabs()[0] || this.tabs[0];
+      if (first && first.spaceId !== this.spaceId) this.spaceId = first.spaceId;
+      if (first) this.activate(first.id);
+      this.sendSpaces();
     });
 
     this.win.on('resize', () => this.layout());
     this.win.on('focus', () => { BrowserWin.lastFocused = this; });
     this.win.on('enter-full-screen', () => this.layout());
+    this.win.on('focus', () => this.send('win-focus', true));
+    this.win.on('blur', () => this.send('win-focus', false));
     this.win.on('leave-full-screen', () => { if (this.htmlFull) { this.htmlFull = false; } this.send('fullscreen', false); this.layout(); this.hideNotice(); });
     this.win.on('close', (e) => {
       if (this.forceClose) return;
@@ -699,11 +847,31 @@ class BrowserWin {
   layout() {
     if (this.win.isDestroyed()) return;
     const [w, h] = this.win.getContentSize();
-    const ch = this.htmlFull ? 0 : this.chromeHeight;
-    this.ui.setBounds({ x: 0, y: 0, width: w, height: this.htmlFull ? 0 : Math.max(this.uiHeight, ch) });
     const a = this.active;
-    if (a) a.view.setBounds({ x: 0, y: ch, width: w, height: Math.max(0, h - ch) });
+    if (this.htmlFull) {
+      this.ui.setBounds({ x: 0, y: 0, width: w, height: 0 });
+      if (a) a.view.setBounds({ x: 0, y: 0, width: w, height: h });
+      return;
+    }
+    // the frame (UI) fills the window; pages sit in the "hole" the UI reports
+    this.ui.setBounds({ x: 0, y: 0, width: w, height: h });
+    const r = this.content;
+    if (this.split) {
+      const panes = this.splitRects();
+      for (const p of panes) { const t = tabById.get(p.id); if (t && this.alive(t)) { const dr = this.deviceRect(t, p.page); t.view.setBounds(dr); this.applyDevice(t, dr); } }
+      this.sendDevice(null);
+      const key = JSON.stringify(panes);
+      if (key !== this.lastPanes) { this.lastPanes = key; this.send('split', { panes, active: this.activeId }); }
+    } else {
+      if (this.lastPanes !== 'none') { this.lastPanes = 'none'; this.send('split', null); }
+      if (a && this.alive(a)) {
+        const dr = this.deviceRect(a, r);
+        a.view.setBounds({ x: dr.x, y: dr.y, width: dr.width, height: dr.height }); this.applyDevice(a, dr);
+        this.sendDevice(dr.scale ? { x: dr.x, y: dr.y, width: dr.width, height: dr.height, device: a.device } : null);
+      } else this.sendDevice(null);
+    }
   }
+  sendDevice(d) { const k = JSON.stringify(d); if (k !== this.lastDevice) { this.lastDevice = k; this.send('device-frame', d); } }
 
   tabInfo(t) {
     const live = this.alive(t);
@@ -712,7 +880,7 @@ class BrowserWin {
     let display = url;
     let warn = '';
     if (url.startsWith(HOME)) display = '';
-    else if (url.startsWith('aurora://error')) { try { display = new URL(url).searchParams.get('u') || url; } catch {} }
+    else if (url.startsWith('antares://error')) { try { display = new URL(url).searchParams.get('u') || url; } catch {} }
     else if (isWebUrl(url)) {
       try {
         const pu = new URL(url);
@@ -732,20 +900,20 @@ class BrowserWin {
       canBack: !wc.isDestroyed() && wc.navigationHistory.canGoBack(),
       canForward: !wc.isDestroyed() && wc.navigationHistory.canGoForward(),
       bookmarked: bookmarks.some((b) => b.url === url),
-      secure: warn ? 'insecure' : url.startsWith('https:') ? 'secure' : url.startsWith('http:') ? 'insecure' : url.startsWith('aurora:') ? 'internal' : 'file',
+      secure: warn ? 'insecure' : url.startsWith('https:') ? 'secure' : url.startsWith('http:') ? 'insecure' : url.startsWith('antares:') ? 'internal' : 'file',
       audible: !wc.isDestroyed() && wc.isCurrentlyAudible(), muted: !wc.isDestroyed() && wc.isAudioMuted(),
       zoom: wc.isDestroyed() ? 1 : wc.getZoomFactor(),
-      crashed: !!t.crashed, sleeping: !!t.sleeping,
+      crashed: !!t.crashed, sleeping: !!t.sleeping, space: t.spaceId, playing: !!t.playing, device: t.device || 'desktop',
     };
   }
   sendTabSoon(t) {
     if (t._sendTimer) return;
     t._sendTimer = setTimeout(() => { t._sendTimer = null; if (tabById.has(t.id)) this.sendTab(t); }, 300);
   }
-  sendTabs() { this.send('tabs', { tabs: this.tabs.map((t) => this.tabInfo(t)), activeId: this.activeId }); }
+  sendTabs() { this.send('tabs', { tabs: this.tabs.map((t) => this.tabInfo(t)), activeId: this.activeId, space: this.spaceId, split: this.split }); }
   sendTab(t) {
     this.send('tab', this.tabInfo(t));
-    if (t.id === this.activeId && !this.win.isDestroyed()) this.win.setTitle(`${t.title || 'Nova aba'} — Aurora${this.isPrivate ? ' (Privado)' : ''}`);
+    if (t.id === this.activeId && !this.win.isDestroyed()) this.win.setTitle(`${t.title || 'Nova aba'} — Antares${this.isPrivate ? ' (Privado)' : ''}`);
   }
 
   createView() {
@@ -761,9 +929,10 @@ class BrowserWin {
     return view;
   }
 
-  newTab(url, { background = false, index = null, opener = null } = {}) {
+  newTab(url, { background = false, index = null, opener = null, space = null } = {}) {
     const view = this.createView();
-    const t = { id: ++tabSeq, view, title: 'Nova aba', url: '', favicon: '', loading: true, win: this, lastActive: Date.now(), openerId: opener ? opener.id : null };
+    const t = { id: ++tabSeq, view, title: 'Nova aba', url: '', favicon: '', loading: true, win: this, lastActive: Date.now(), openerId: opener ? opener.id : null,
+      spaceId: space || (opener && opener.spaceId) || this.spaceId };
     tabById.set(t.id, t);
     let pos = index;
     if (pos == null && opener && this.tabs.includes(opener)) {
@@ -780,7 +949,7 @@ class BrowserWin {
     const target = toUrl(url) || settings.homepage || HOME;
     t.url = target;
     view.webContents.loadURL(target).catch(() => {});
-    if (!background || !this.activeId) this.activate(t.id); else this.sendTabs();
+    if ((!background || !this.activeId) && t.spaceId === this.spaceId) this.activate(t.id); else { this.sendTabs(); this.sendSpaces(); }
     return t;
   }
 
@@ -794,14 +963,30 @@ class BrowserWin {
       if (t.closing) { this.finalizeClose(t); return; }
       t.sleepState = { url: t.url }; t.view = this.createView(); t.sleeping = true; this.wireTab(t);
     }
+    if (t.spaceId !== this.spaceId) {
+      // a tab from another Space (e.g. picked in the command palette): go to that Space
+      if (this.activeId) this.lastActiveBySpace[this.spaceId] = this.activeId;
+      if (this.split) this.exitSplit(null, { quiet: true });
+      for (const x of this.tabs) { try { this.win.contentView.removeChildView(x.view); } catch {} }
+      this.activeId = null; this.spaceId = t.spaceId; this.sendSpaces();
+    }
+    if (this.split && this.split.includes(id)) {
+      // inside split view: just move the focus to that pane
+      this.activeId = id; t.lastActive = Date.now(); this.sendTabs(); this.sendTab(t);
+      try { t.view.webContents.focus(); } catch {}
+      return;
+    }
+    if (this.split) this.exitSplit(null, { quiet: true });
     const prev = this.active;
     if (prev && prev !== t) { prev.lastActive = Date.now(); try { this.win.contentView.removeChildView(prev.view); } catch {} }
+    for (const x of this.tabs) if (x !== t && x.spaceId === this.spaceId) { try { this.win.contentView.removeChildView(x.view); } catch {} }
     if (prev !== t) for (const x of this.tabs) if (x.openerId && x !== t) x.openerId = null; // like Chrome: switching tabs resets link order
     if (t.sleeping) this.wake(t);
     t.lastActive = Date.now();
     this.activeId = id;
+    this.lastActiveBySpace[this.spaceId] = id;
     this.win.contentView.addChildView(t.view);
-    this.win.contentView.addChildView(this.ui); // keep chrome on top
+    this.restack();
     this.layout();
     this.sendTabs();
     this.sendTab(t);
@@ -828,19 +1013,29 @@ class BrowserWin {
     const i = this.tabs.indexOf(t);
     if (i < 0) return;
     const url = t.closedUrl || tabUrl(t);
-    if (/^https?:/.test(url) && !this.closingWindow) { this.closedTabs.push(url); if (this.closedTabs.length > 25) this.closedTabs.shift(); }
+    if (/^https?:/.test(url) && !this.closingWindow) { this.closedTabs.push({ url, space: t.spaceId }); if (this.closedTabs.length > 25) this.closedTabs.shift(); }
+    const spaceBefore = this.spaceTabs(t.spaceId);
+    const si = spaceBefore.indexOf(t);
     this.tabs.splice(i, 1);
     tabById.delete(t.id);
     try { blockedPerTab.delete(t.wc.id); } catch {}
     if (this.disposed) return;
+    try { this.win.contentView.removeChildView(t.view); } catch {}
+    if (this.split && this.split.includes(t.id)) {
+      const rest = this.split.filter((x) => x !== t.id);
+      if (rest.length >= 2) { this.split = rest; if (this.activeId === t.id) this.activeId = rest[0]; this.layout(); }
+      else { this.split = null; if (this.activeId === t.id || rest[0]) this.activeId = null; if (rest[0]) this.activate(rest[0]); }
+    }
     if (this.activeId === t.id) {
-      try { this.win.contentView.removeChildView(t.view); } catch {}
       this.activeId = null;
-      if (this.tabs.length) this.activate(this.tabs[Math.min(i, this.tabs.length - 1)].id);
+      const same = this.spaceTabs(t.spaceId);
+      if (!this.tabs.length) { /* window closes below */ }
+      else if (same.length) this.activate(same[Math.min(si, same.length - 1)].id);
+      else if (!this.closingWindow) this.newTab(null); // keep the Space open with a new tab
     }
     try { if (this.alive(t)) t.view.webContents.close(); } catch {}
     if (!this.tabs.length) { this.forceClose = true; this.win.close(); return; }
-    this.sendTabs();
+    this.sendTabs(); this.sendSpaces();
   }
 
   sleepTab(t) {
@@ -899,11 +1094,31 @@ class BrowserWin {
     });
     wc.on('did-start-loading', () => { t.loading = true; t.crashed = false; this.sendTab(t); });
     wc.on('did-stop-loading', () => { t.loading = false; this.sendTab(t); });
+    wc.on('focus', () => { if (this.split && this.split.includes(t.id) && this.activeId !== t.id) { this.activeId = t.id; this.sendTabs(); this.sendTab(t); this.layout(); } });
+    wc.on('dom-ready', () => { if (t.device && t.device !== 'desktop' && (t.id === this.activeId || (this.split || []).includes(t.id))) this.layout(); });
+    wc.on('media-started-playing', () => { t.playing = true; t.hadMedia = true; this.sendTab(t); });
+    wc.on('media-paused', () => { t.playing = false; this.sendTab(t); });
+    wc.on('did-finish-load', () => {
+      // small preview for the "Recentes" panel
+      const url = wc.getURL();
+      if (!isWebUrl(url) || this.isPrivate) return;
+      setTimeout(() => {
+        if (wc.isDestroyed() || wc.getURL() !== url || (t.id !== this.activeId && !(this.split || []).includes(t.id))) return;
+        wc.capturePage().then((img) => {
+          if (img.isEmpty()) return;
+          const small = img.resize({ width: 160 });
+          thumbs.delete(url); thumbs.set(url, 'data:image/jpeg;base64,' + small.toJPEG(60).toString('base64'));
+          while (thumbs.size > 40) thumbs.delete(thumbs.keys().next().value);
+          save('thumbs', Object.fromEntries(thumbs), 3000);
+          broadcastRecents();
+        }).catch(() => {});
+      }, 1500);
+    });
     wc.on('did-finish-load', () => { if (t.id === this.activeId && wc.getURL().startsWith(HOME)) this.focusAddress(); });
     wc.on('did-navigate', (e, url) => {
       blockedPerTab.delete(wc.id); t.blockedPopups = [];
-      t.url = url; t.favicon = url.startsWith('aurora:') ? '' : t.favicon;
-      if (!this.isPrivate) addHistory(url, wc.getTitle(), '');
+      t.url = url; t.favicon = url.startsWith('antares:') ? '' : t.favicon;
+      if (!this.isPrivate) { addHistory(url, wc.getTitle(), ''); broadcastRecentsSoon(); }
       const z = settings.zoom[hostOf(url)];
       if (isWebUrl(url) && Math.abs(wc.getZoomFactor() - (z || 1)) > 0.001) wc.setZoomFactor(z || 1);
       this.sendTab(t);
@@ -917,29 +1132,32 @@ class BrowserWin {
     });
     wc.on('audio-state-changed', () => this.sendTab(t));
     wc.on('did-fail-load', (e, code, desc, url, isMain) => {
-      if (!isMain || code === -3 || url.startsWith('aurora://')) return;
+      if (!isMain || code === -3 || url.startsWith('antares://')) return;
       const orig = upgradedUrls.get(url);
       if (orig && code !== -3) {
         // the site does not support HTTPS: ask before falling back to plain http
         const q = new URLSearchParams({ u: orig, c: 'https', d: desc });
-        wc.loadURL(`aurora://error/?${q}`).catch(() => {});
+        wc.loadURL(`antares://error/?${q}`).catch(() => {});
         return;
       }
       const q = new URLSearchParams({ u: url, c: String(code), d: desc });
-      wc.loadURL(`aurora://error/?${q}`).catch(() => {});
+      wc.loadURL(`antares://error/?${q}`).catch(() => {});
     });
     wc.on('render-process-gone', (e, details) => {
       if (details.reason === 'clean-exit') return;
       t.crashed = true; t.loading = false; this.sendTab(t);
       const q = new URLSearchParams({ u: t.url, c: 'crash', d: details.reason });
-      setTimeout(() => { if (!wc.isDestroyed()) wc.loadURL(`aurora://error/?${q}`).catch(() => {}); }, 50);
+      setTimeout(() => { if (!wc.isDestroyed()) wc.loadURL(`antares://error/?${q}`).catch(() => {}); }, 50);
     });
     wc.setWindowOpenHandler(({ url, disposition, features }) => {
-      const fromInternal = wc.getURL().startsWith('aurora://') && trusted.has(wc);
+      const fromInternal = wc.getURL().startsWith('antares://') && trusted.has(wc);
       if (!fromInternal && !isOpenableByPage(url)) return { action: 'deny' };
       // pop-up blocker: pages may only open windows right after a click or key press
       const origin = (() => { try { return new URL(wc.getURL()).origin; } catch { return ''; } })();
-      const recent = Date.now() - (lastUserInput.get(wc) || 0) < 2500;
+      // like Chrome, one click or key press lets the page open one window (no bursts of tabs from a single click)
+      const inputAt = lastUserInput.get(wc) || 0;
+      const recent = Date.now() - inputAt < 2500 && t.popupInputUsed !== inputAt;
+      if (recent && !fromInternal) t.popupInputUsed = inputAt;
       if (!recent && !fromInternal && !settings.popupAllow[origin]) {
         t.blockedPopups = t.blockedPopups || [];
         if (t.blockedPopups.length < 20) t.blockedPopups.push(url || 'about:blank');
@@ -1007,9 +1225,9 @@ class BrowserWin {
   }
 
   openInternal(page) {
-    const url = `aurora://${page}`;
+    const url = `antares://${page}`;
     const host = page.split(/[#/?]/)[0];
-    const existing = this.tabs.find((t) => { try { const u = new URL(tabUrl(t)); return u.protocol === 'aurora:' && u.hostname === host; } catch { return false; } });
+    const existing = this.spaceTabs().find((t) => { try { const u = new URL(tabUrl(t)); return u.protocol === 'antares:' && u.hostname === host; } catch { return false; } });
     if (existing) { this.activate(existing.id); existing.view.webContents.loadURL(url).catch(() => {}); return; }
     const a = this.active;
     if (a && a.view.webContents.getURL().startsWith(HOME)) a.view.webContents.loadURL(url);
@@ -1146,14 +1364,15 @@ class BrowserWin {
     n.webContents.loadURL(uiUrl('notice.html', { t: text }));
     const [w] = this.win.getContentSize();
     const width = Math.min(560, w - 40);
-    n.setBounds({ x: Math.round((w - width) / 2), y: 18, width, height: 56 });
-    this.win.contentView.addChildView(n);
+    const top = this.htmlFull ? 18 : this.content.y + 14;
+    n.setBounds({ x: Math.round((w - width) / 2), y: top, width, height: 56 });
+    this.win.contentView.addChildView(n); this.noticeShown = true;
     const a = this.active; if (a) setTimeout(() => { try { a.view.webContents.focus(); } catch {} }, 50);
     clearTimeout(this.noticeTimer);
-    this.noticeTimer = setTimeout(() => { try { this.win.contentView.removeChildView(n); } catch {} }, ms);
+    this.noticeTimer = setTimeout(() => { this.noticeShown = false; try { this.win.contentView.removeChildView(n); } catch {} }, ms);
   }
 
-  hideNotice() { clearTimeout(this.noticeTimer); if (this.notice) { try { this.win.contentView.removeChildView(this.notice); } catch {} } }
+  hideNotice() { clearTimeout(this.noticeTimer); this.noticeShown = false; if (this.notice) { try { this.win.contentView.removeChildView(this.notice); } catch {} } }
 
   popupMenu(id) {
     const t = this.tabs.find((x) => x.id === id); if (!t) return;
@@ -1182,6 +1401,234 @@ class BrowserWin {
       } },
       { label: 'Configurações de privacidade', click: () => this.openInternal('settings#privacidade') },
     ]).popup({ window: this.win });
+  }
+
+  /* ---------- device preview ("Dispositivos"): see the page as a phone or tablet */
+  deviceRect(t, rect) {
+    // a phone/tablet preview is drawn at its real proportions, centred in the page area
+    const p = DEVICES[t.device || 'desktop'];
+    if (!p || !p.w) return rect;
+    let w = p.w, h = p.h; if (t.landscape) [w, h] = [h, w];
+    const s = Math.min(1, (rect.width - 40) / w, (rect.height - 40) / h);
+    const W = Math.max(50, Math.round(w * s)), H = Math.max(50, Math.round(h * s));
+    return { x: rect.x + Math.round((rect.width - W) / 2), y: rect.y + Math.round((rect.height - H) / 2), width: W, height: H, scale: s, dw: w, dh: h };
+  }
+  applyDevice(t, r) {
+    const wc = t.view.webContents;
+    const p = DEVICES[t.device || 'desktop'];
+    if (!p || !p.w || !r.scale) { if (t.emulating) { try { wc.disableDeviceEmulation(); } catch {} t.emulating = false; } return; }
+    try {
+      wc.enableDeviceEmulation({
+        screenPosition: 'mobile', screenSize: { width: r.dw, height: r.dh }, viewPosition: { x: 0, y: 0 },
+        viewSize: { width: r.dw, height: r.dh }, deviceScaleFactor: p.dpr, scale: r.scale,
+      });
+      t.emulating = true;
+    } catch {}
+  }
+  setDevice(id, rotate = false) {
+    const t = this.active; if (!t || !DEVICES[id]) return;
+    const wc = t.view.webContents;
+    const wasMobile = !!(DEVICES[t.device || 'desktop'] || {}).mobile;
+    if (rotate && t.device === id) t.landscape = !t.landscape; else if (!rotate) t.landscape = false;
+    t.device = id;
+    const mobile = !!DEVICES[id].mobile;
+    if (mobile !== wasMobile) {
+      wc.setUserAgent(mobile ? MOBILE_UA : app.userAgentFallback);
+      wc.reload();
+    }
+    this.layout(); this.sendTab(t);
+  }
+
+  /* ---------- capture ("Captura"): screenshot of the visible page */
+  async capture() {
+    const t = this.active; if (!t || !this.alive(t)) return;
+    try {
+      const img = await t.view.webContents.capturePage();
+      if (img.isEmpty()) return;
+      const d = new Date(); const pad = (n) => String(n).padStart(2, '0');
+      const name = `Captura Antares ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}.png`;
+      const file = uniquePath(app.getPath('downloads'), name);
+      fs.writeFileSync(file, img.toPNG());
+      try {
+        if (typeof clipboard.writeImage === 'function') clipboard.writeImage(img);
+        else if (ClipboardItem) clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()], { type: 'image/png' }) })]).catch(() => {});
+      } catch {}
+      downloads.unshift({ id: ++dlSeq, filename: path.basename(file), url: tabUrl(t), path: file, total: fs.statSync(file).size, received: fs.statSync(file).size, state: 'completed', start: Date.now(), private: this.isPrivate });
+      broadcastDownloads(); save('downloads', persistableDownloads());
+      this.showNotice('Captura salva em Downloads e copiada', 2600);
+    } catch (e) { console.error('capture', e); }
+  }
+
+  /* ---------- media hub ("Mídia") */
+  mediaList() {
+    const out = [];
+    for (const t of this.tabs) {
+      if (!this.alive(t)) continue;
+      const wc = t.view.webContents;
+      const audible = wc.isCurrentlyAudible(); const muted = wc.isAudioMuted();
+      if (audible || muted || t.playing || t.hadMedia) out.push({ id: t.id, title: t.title, favicon: t.favicon, space: t.spaceId, playing: !!t.playing || audible, muted });
+    }
+    return out;
+  }
+  async mediaAction(id, action) {
+    const t = this.tabs.find((x) => x.id === id); if (!t || !this.alive(t)) return;
+    const wc = t.view.webContents;
+    if (action === 'mute') wc.setAudioMuted(!wc.isAudioMuted());
+    else if (action === 'go') this.activate(id);
+    else if (action === 'toggle') {
+      await wc.executeJavaScript(`(() => { const m = [...document.querySelectorAll('video,audio')]; const p = m.filter((x) => !x.paused);
+        if (p.length) { p.forEach((x) => x.pause()); return 'paused'; } const f = m.find((x) => x.currentTime > 0) || m[0]; if (f) { f.play().catch(() => {}); return 'playing'; } return 'none'; })()`, true).catch(() => {});
+    }
+    this.sendTab(t);
+    return this.mediaList();
+  }
+
+  /* ---------- performance ("Desempenho") */
+  perfInfo() {
+    const metrics = app.getAppMetrics();
+    const byPid = new Map(metrics.map((m) => [m.pid, m]));
+    const total = metrics.reduce((s2, m) => s2 + (m.memory ? m.memory.workingSetSize : 0), 0);
+    const tabs = this.tabs.map((t) => {
+      let kb = 0; try { if (this.alive(t) && !t.sleeping) { const m = byPid.get(t.view.webContents.getOSProcessId()); kb = m && m.memory ? m.memory.workingSetSize : 0; } } catch {}
+      return { id: t.id, title: t.title, favicon: t.favicon, space: t.spaceId, mb: Math.round(kb / 1024), sleeping: !!t.sleeping, active: t.id === this.activeId };
+    }).sort((a, b) => b.mb - a.mb);
+    const cpu = metrics.reduce((s2, m) => s2 + (m.cpu ? m.cpu.percentCPUUsage : 0), 0);
+    return { totalMb: Math.round(total / 1024), cpu: Math.round(cpu), tabs, sleeping: tabs.filter((x) => x.sleeping).length, blocked: blockedTotal, tabSleep: settings.tabSleep };
+  }
+  perfAction(action, id) {
+    if (action === 'sleep-all') {
+      for (const t of this.tabs) {
+        if (t.id === this.activeId || t.sleeping || (this.split || []).includes(t.id) || !isWebUrl(tabUrl(t)) || !this.alive(t)) continue;
+        try { if (t.view.webContents.isCurrentlyAudible()) continue; } catch {}
+        this.sleepTab(t);
+      }
+    } else if (action === 'sleep') { const t = this.tabs.find((x) => x.id === id); if (t && t.id !== this.activeId && !t.sleeping && isWebUrl(tabUrl(t))) this.sleepTab(t); }
+    else if (action === 'toggle-sleep') { settings.tabSleep = !settings.tabSleep; save('settings', settings); broadcastSettings(); }
+    return this.perfInfo();
+  }
+
+  /* ---------- read later / missions from the current page */
+  addReadLater(t = this.active) {
+    if (!t) return;
+    const url = tabUrl(t); if (!isWebUrl(url)) return;
+    if (!readLater.some((x) => x.url === url)) { readLater.unshift({ url, title: t.title || url, favicon: t.favicon || '', added: Date.now() }); save('readlater', readLater); }
+    broadcastCollections(); this.showNotice('Adicionado a Ler depois', 2000);
+  }
+  addToMission(missionId, t = this.active) {
+    const m = missions.find((x) => x.id === missionId); if (!m || !t) return;
+    const url = tabUrl(t); if (!isWebUrl(url)) return;
+    m.pages = m.pages || [];
+    if (!m.pages.some((x) => x.url === url)) m.pages.push({ url, title: t.title || url, favicon: t.favicon || '' });
+    m.updated = Date.now(); save('missions', missions); broadcastCollections();
+    this.showNotice(`Página adicionada à missão “${m.title}”`, 2200);
+  }
+  saveSpaceAsOrbit(spaceId = this.spaceId, name = null) {
+    const tabs = this.spaceTabs(spaceId).map((t) => ({ url: tabUrl(t), title: t.title, favicon: t.favicon })).filter((x) => isWebUrl(x.url));
+    if (!tabs.length) { this.showNotice('Não há páginas para salvar nesta Space', 2200); return null; }
+    const sp = spaceList().find((x) => x.id === spaceId);
+    const o = { id: uid(), name: name || `${sp ? sp.name : 'Órbita'} · ${new Date().toLocaleDateString('pt-BR')}`, space: spaceId, tabs, created: Date.now() };
+    orbits.unshift(o); save('orbits', orbits); broadcastCollections();
+    this.showNotice(`Órbita “${o.name}” salva com ${tabs.length} página(s)`, 2600);
+    return o;
+  }
+  openOrbit(id) {
+    const o = orbits.find((x) => x.id === id); if (!o) return;
+    const first = this.tabs.length;
+    (o.tabs || []).forEach((x, i) => this.newTab(x.url, { background: i > 0 }));
+    void first;
+  }
+  openMission(id) {
+    const m = missions.find((x) => x.id === id); if (!m) return;
+    m.updated = Date.now(); save('missions', missions);
+    const pages = (m.pages || []).slice(0, 20);
+    if (!pages.length) { this.openInternal('universe#missions'); return; }
+    pages.forEach((x, i) => this.newTab(x.url, { background: i > 0 }));
+    broadcastCollections();
+  }
+
+  /* ---------- menus for tabs, spaces and the "Mais"/split buttons */
+  tabMenu(id) {
+    const t = this.tabs.find((x) => x.id === id); if (!t) return;
+    const wc = t.view.webContents;
+    const others = spaceList().filter((x) => x.id !== t.spaceId);
+    Menu.buildFromTemplate([
+      { label: 'Nova aba à direita', click: () => this.newTab(null, { index: this.tabs.indexOf(t) + 1 }) },
+      { label: 'Recarregar', click: () => wc.reload() },
+      { label: 'Duplicar', click: () => this.newTab(tabUrl(t), { index: this.tabs.indexOf(t) + 1 }) },
+      { label: wc.isAudioMuted() ? 'Ativar som do site' : 'Silenciar site', click: () => { wc.setAudioMuted(!wc.isAudioMuted()); this.sendTab(t); } },
+      { type: 'separator' },
+      { label: 'Abrir em Split View', enabled: t.id !== this.activeId && !(this.split || []).includes(t.id), click: () => this.splitAdd(t.id) },
+      { label: 'Mover para Space', visible: !this.isPrivate, submenu: others.length ? others.map((sp) => ({ label: sp.name, click: () => this.moveTabToSpace(t, sp.id) })) : [{ label: 'Nenhuma outra Space', enabled: false }] },
+      { label: 'Ler depois', enabled: isWebUrl(tabUrl(t)) && !this.isPrivate, click: () => this.addReadLater(t) },
+      { label: 'Adicionar à missão', enabled: isWebUrl(tabUrl(t)) && !this.isPrivate, submenu: missions.length ? missions.slice(0, 12).map((m) => ({ label: m.title, click: () => this.addToMission(m.id, t) })) : [{ label: 'Crie uma missão em Missions', enabled: false }] },
+      { type: 'separator' },
+      { label: 'Fechar', click: () => this.closeTab(id) },
+      { label: 'Fechar outras abas desta Space', click: () => this.spaceTabs(t.spaceId).filter((x) => x.id !== id).forEach((x) => this.closeTab(x.id)) },
+      { label: 'Fechar abas à direita', click: () => { const st = this.spaceTabs(t.spaceId); st.slice(st.indexOf(t) + 1).forEach((x) => this.closeTab(x.id)); } },
+      { type: 'separator' },
+      { label: 'Reabrir aba fechada', enabled: this.closedTabs.length > 0, click: () => this.reopen() },
+    ]).popup({ window: this.win });
+  }
+  spaceMenu(id) {
+    const sp = spaceList().find((x) => x.id === id); if (!sp) return;
+    Menu.buildFromTemplate([
+      { label: `Abrir ${sp.name}`, click: () => this.switchSpace(id) },
+      { label: 'Renomear…', click: () => { this.ui.webContents.focus(); this.send('space-rename', id); } },
+      { label: 'Salvar páginas como Órbita', click: () => this.saveSpaceAsOrbit(id) },
+      { type: 'separator' },
+      { label: 'Excluir Space (fecha as abas dela)', enabled: spaceList().length > 1, click: async () => {
+        const r = await dialog.showMessageBox(this.win, { type: 'warning', buttons: ['Excluir', 'Cancelar'], defaultId: 1, cancelId: 1, noLink: true,
+          message: `Excluir a Space “${sp.name}”?`, detail: 'As abas abertas nela serão fechadas. Salve-as como Órbita antes, se quiser guardá-las.' });
+        if (r.response !== 0) return;
+        deleteSpace(id);
+      } },
+    ]).popup({ window: this.win });
+  }
+
+  /* ---------- command palette (center orb / Ctrl+K) */
+  paletteQuery(q) {
+    q = String(q || '').trim().toLowerCase();
+    const match = (...xs) => !q || xs.some((x) => String(x || '').toLowerCase().includes(q));
+    const items = [];
+    const cmds = [
+      ['Nova aba', 'cmd', 'new-tab', 'Ctrl+T'], ['Nova janela privada', 'cmd', 'private', 'Ctrl+Shift+N'], ['Dividir a tela (Split View)', 'cmd', 'split', ''],
+      ['Captura da página', 'cmd', 'capture', ''], ['Mapa Estelar', 'cmd', 'map', ''], ['Salvar esta Space como Órbita', 'cmd', 'save-orbit', ''],
+      ['Ler depois', 'cmd', 'read-later', ''], ['Histórico', 'cmd', 'history', 'Ctrl+H'], ['Downloads', 'cmd', 'downloads', 'Ctrl+J'],
+      ['Favoritos', 'cmd', 'bookmarks', ''], ['Configurações', 'cmd', 'settings', ''], ['Alternar Modo Foco / Órbita', 'cmd', 'mode', ''],
+    ];
+    for (const [title, kind, id, hint] of cmds) if (match(title)) items.push({ kind, id, title, sub: hint, group: 'Comandos' });
+    if (!this.isPrivate) for (const sp of spaceList()) if (match(sp.name, 'space')) items.push({ kind: 'space', id: sp.id, title: sp.name, sub: `${this.spaceTabs(sp.id).length} aba(s)`, group: 'Spaces', color: sp.color });
+    for (const t of this.tabs) if (match(t.title, tabUrl(t))) items.push({ kind: 'tab', id: t.id, title: t.title || tabUrl(t), sub: (spaceList().find((x) => x.id === t.spaceId) || { name: 'Privado' }).name, favicon: t.favicon, group: 'Abas abertas' });
+    if (!this.isPrivate) {
+      for (const o of orbits) if (match(o.name)) items.push({ kind: 'orbit', id: o.id, title: o.name, sub: `${(o.tabs || []).length} página(s)`, group: 'Orbits' });
+      for (const m of missions) if (match(m.title, m.notes)) items.push({ kind: 'mission', id: m.id, title: m.title, sub: `${(m.pages || []).length} página(s)`, group: 'Missions' });
+    }
+    if (q) {
+      for (const b of bookmarks) if (match(b.title, b.url)) items.push({ kind: 'url', id: b.url, title: b.title, sub: b.url, favicon: b.favicon, group: 'Favoritos' });
+      const seen = new Set();
+      for (const h of history) { if (items.length > 60) break; if (seen.has(h.url) || !match(h.title, h.url)) continue; seen.add(h.url); items.push({ kind: 'url', id: h.url, title: h.title || h.url, sub: h.url, favicon: h.favicon, group: 'Histórico' }); if (seen.size >= 6) break; }
+      items.push({ kind: 'search', id: q, title: `Pesquisar “${q}”`, sub: (SEARCH[settings.searchEngine] || SEARCH.google).name, group: 'Web' });
+    }
+    return items.slice(0, 40);
+  }
+  paletteRun(item) {
+    if (!item) return;
+    const k = item.kind, id = item.id;
+    if (k === 'tab') this.activate(id);
+    else if (k === 'space') this.switchSpace(id);
+    else if (k === 'orbit') this.openOrbit(id);
+    else if (k === 'mission') this.openMission(id);
+    else if (k === 'url') this.newTab(id);
+    else if (k === 'search') this.newTab(searchUrl(id));
+    else if (k === 'cmd') {
+      const map = {
+        'new-tab': () => this.newTab(), private: () => new BrowserWin({ isPrivate: true }), split: () => this.splitAdd(),
+        capture: () => this.capture(), map: () => this.openInternal('mapa'), 'save-orbit': () => this.saveSpaceAsOrbit(),
+        'read-later': () => this.addReadLater(), history: () => this.openInternal('history'), downloads: () => this.openInternal('downloads'),
+        bookmarks: () => this.openInternal('bookmarks'), settings: () => this.openInternal('settings'), mode: () => this.send('toggle-mode'),
+      };
+      if (map[id]) map[id]();
+    }
   }
 
   async savePage(t = this.active) {
@@ -1222,15 +1669,18 @@ class BrowserWin {
       { label: 'Ferramentas do desenvolvedor', accelerator: 'F12', click: () => t && t.view.webContents.toggleDevTools() },
       { type: 'separator' },
       { label: 'Configurações', click: () => this.openInternal('settings') },
-      { label: 'Sobre o Aurora', click: () => this.openInternal('settings#sobre') },
+      { label: 'Sobre o Antares', click: () => this.openInternal('settings#sobre') },
       { type: 'separator' },
       { label: 'Sair', click: () => app.quit() },
     ]);
   }
 
   reopen() {
-    const u = this.closedTabs.pop();
-    if (u) this.newTab(u);
+    const c = this.closedTabs.pop();
+    if (!c) return;
+    const sp = typeof c === 'object' && spaceList().some((x) => x.id === c.space) ? c.space : this.spaceId;
+    if (sp !== this.spaceId) this.switchSpace(sp);
+    this.newTab(typeof c === 'object' ? c.url : c);
   }
 
   runShortcut(k) {
@@ -1242,6 +1692,7 @@ class BrowserWin {
     else if (k === 'p') { if (twc) twc.print(); }
     else if (k === 'j') this.openInternal('downloads');
     else if (k === 'u') { if (twc) this.newTab('view-source:' + tabUrl(t), { opener: t }); }
+    else if (k === 'k') { this.ui.webContents.focus(); this.send('palette', true); }
   }
 
   siteMenu(id) {
@@ -1249,8 +1700,8 @@ class BrowserWin {
     const wc = t.view.webContents; const url = tabUrl(t);
     let u; try { u = new URL(url); } catch { return; }
     const items = [];
-    if (u.protocol === 'aurora:') {
-      items.push({ label: 'Página interna do Aurora', enabled: false });
+    if (u.protocol === 'antares:') {
+      items.push({ label: 'Página interna do Antares', enabled: false });
       Menu.buildFromTemplate(items).popup({ window: this.win }); return;
     }
     const info = this.tabInfo(t);
@@ -1335,15 +1786,18 @@ class BrowserWin {
         return;
       }
       let handled = true;
-      if (mod && i.shift && k === 't') this.reopen();
+      if (mod && !i.shift && !i.alt && k === 'k') { this.ui.webContents.focus(); this.send('palette', true); }
+      else if (mod && i.alt && /^[1-9]$/.test(k)) { const sp = spaceList()[Number(k) - 1]; if (sp) this.switchSpace(sp.id); }
+      else if (mod && i.shift && k === 't') this.reopen();
       else if (mod && i.shift && k === 'n') new BrowserWin({ isPrivate: true });
       else if (mod && i.shift && k === 'b') toggleBookmarksBar();
       else if (mod && i.shift && k === 'o') this.openInternal('bookmarks');
       else if (mod && i.shift && k === 'Delete') this.openInternal('settings#limpar');
       else if (mod && (k === 'Tab' || k === 'PageDown' || k === 'PageUp')) {
         const dir = (k === 'PageUp' || (k === 'Tab' && i.shift)) ? -1 : 1;
-        const idx = this.tabs.findIndex((x) => x.id === this.activeId);
-        const n = this.tabs[(idx + dir + this.tabs.length) % this.tabs.length];
+        const st = this.spaceTabs();
+        const idx = st.findIndex((x) => x.id === this.activeId);
+        const n = st[(idx + dir + st.length) % st.length];
         if (n) this.activate(n.id);
       }
       else if (mod && !i.shift && k === 't') this.newTab();
@@ -1362,7 +1816,8 @@ class BrowserWin {
       else if (mod && k === '-') this.zoom(-1);
       else if (mod && k === '0') this.zoom(0);
       else if (mod && /^[1-9]$/.test(k)) {
-        const n = k === '9' ? this.tabs[this.tabs.length - 1] : this.tabs[Number(k) - 1];
+        const st = this.spaceTabs();
+        const n = k === '9' ? st[st.length - 1] : st[Number(k) - 1];
         if (n) this.activate(n.id);
       }
       else if (i.alt && k === 'ArrowLeft') { if (twc && twc.navigationHistory.canGoBack()) twc.navigationHistory.goBack(); }
@@ -1382,7 +1837,40 @@ class BrowserWin {
   }
 }
 
-const OVERRIDABLE_KEYS = new Set(['s', 'f', 'h', 'd', 'p', 'j', 'u']);
+const DEVICES = {
+  desktop: { name: 'Computador' },
+  phone: { name: 'Celular', w: 390, h: 844, dpr: 3, mobile: true },
+  tablet: { name: 'Tablet', w: 820, h: 1180, dpr: 2, mobile: true },
+};
+const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + process.versions.chrome + ' Mobile Safari/537.36';
+function recentItems() {
+  const out = []; const seen = new Set();
+  for (const h of history) {
+    if (!isWebUrl(h.url) || seen.has(h.url)) continue;
+    seen.add(h.url);
+    out.push({ url: h.url, title: h.title || h.url, favicon: h.favicon || '', thumb: thumbs.get(h.url) || '' });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+function broadcastRecents() { const r = recentItems(); for (const w of BrowserWin.all) if (!w.isPrivate) w.send('recents', r); }
+let recentsTimer = null;
+function broadcastRecentsSoon() { clearTimeout(recentsTimer); recentsTimer = setTimeout(broadcastRecents, 800); }
+function deleteSpace(id) {
+  const list = spaceList(); if (list.length <= 1) return;
+  settings.spaces = list.filter((x) => x.id !== id); save('settings', settings);
+  const fallback = settings.spaces[0].id;
+  for (const w of BrowserWin.all) {
+    if (w.isPrivate) continue;
+    const doomed = w.tabs.filter((t) => t.spaceId === id);
+    if (w.spaceId === id) w.switchSpace(fallback);
+    for (const t of doomed) w.closeTab(t.id);
+  }
+  broadcastSpaces();
+}
+const SPACE_COLORS = ['#ff7a1a', '#ffb020', '#4fa3ff', '#3ad29f', '#ff5c8a', '#a98bff', '#e8e2d6'];
+
+const OVERRIDABLE_KEYS = new Set(['s', 'f', 'h', 'd', 'p', 'j', 'u', 'k']);
 ipcMain.on('page:key', (e, key, prevented) => {
   if (typeof key !== 'string' || !OVERRIDABLE_KEYS.has(key)) return;
   const w = BrowserWin.fromWebContents(e.sender); if (!w) return;
@@ -1398,6 +1886,8 @@ function publicSettings() {
     homepage: settings.homepage, startup: settings.startup, showBookmarksBar: settings.showBookmarksBar,
     theme: settings.theme, askDownloadLocation: settings.askDownloadLocation, blockTrackers: settings.blockTrackers,
     httpsOnly: settings.httpsOnly, gpc: settings.gpc, tabSleep: settings.tabSleep,
+    layoutMode: settings.layoutMode, rightPanel: settings.rightPanel,
+    shortcuts: Array.isArray(settings.shortcuts) ? settings.shortcuts : DEFAULT_SHORTCUTS,
   };
 }
 function broadcastBookmarks() { for (const w of BrowserWin.all) w.send('bookmarks', bookmarks); }
@@ -1433,29 +1923,75 @@ uiOn('ui:site-menu', (w, id) => w.siteMenu(id));
 uiOn('ui:open-update', (w) => w.openInternal('settings#seguranca'));
 uiOn('ui:dismiss-update', () => { updateInfo.dismissed = updateInfo.latest || (updateInfo.supported ? 'age' : 'eol'); broadcastUpdate(); });
 uiOn('ui:mute', (w, id) => { const t = w.tabs.find((x) => x.id === id); if (t) { t.view.webContents.setAudioMuted(!t.view.webContents.isAudioMuted()); w.sendTab(t); } });
-uiOn('ui:heights', (w, chrome, total) => { w.chromeHeight = Math.max(0, chrome | 0); w.uiHeight = Math.max(w.chromeHeight, total | 0); w.layout(); });
+uiOn('ui:layout', (w, rect, onTop) => {
+  const [W, H] = w.win.getContentSize();
+  const num = (v, max) => Math.max(0, Math.min(max, Math.round(Number(v) || 0)));
+  if (rect) w.content = { x: num(rect.x, W), y: num(rect.y, H), width: num(rect.width, W), height: num(rect.height, H) };
+  const top = !!onTop;
+  if (top !== w.uiOnTop) {
+    w.uiOnTop = top;
+    if (top) w.win.contentView.addChildView(w.ui); else w.restack();
+    if (!top) { const a = w.active; if (a) try { a.view.webContents.focus(); } catch {} }
+  }
+  w.layout();
+});
+uiOn('ui:win', (w, action) => {
+  if (action === 'min') w.win.minimize();
+  else if (action === 'max') { if (w.win.isMaximized()) w.win.unmaximize(); else w.win.maximize(); }
+  else if (action === 'close') w.win.close();
+  else if (action === 'fullscreen') w.win.setFullScreen(!w.win.isFullScreen());
+});
+uiOn('ui:space', (w, action, id, name) => {
+  if (w.isPrivate) return;
+  if (action === 'switch') w.switchSpace(id);
+  else if (action === 'menu') w.spaceMenu(id);
+  else if (action === 'add') {
+    const list = spaceList();
+    const nm = String(name || '').trim().slice(0, 24) || `Space ${list.length + 1}`;
+    const sp = { id: uid(), name: nm, color: SPACE_COLORS[list.length % SPACE_COLORS.length] };
+    settings.spaces = [...list, sp]; save('settings', settings); broadcastSpaces(); w.switchSpace(sp.id);
+  } else if (action === 'rename') {
+    const nm = String(name || '').trim().slice(0, 24);
+    if (nm) { settings.spaces = spaceList().map((x) => (x.id === id ? { ...x, name: nm } : x)); save('settings', settings); broadcastSpaces(); }
+  } else if (action === 'move') { // drag a tab onto a space
+    const t = w.tabs.find((x) => x.id === Number(name)); if (t) w.moveTabToSpace(t, id);
+  }
+});
+uiOn('ui:split', (w, action, id) => {
+  if (action === 'add') w.splitAdd(id ? Number(id) : null);
+  else if (action === 'remove') w.removeFromSplit(Number(id));
+  else if (action === 'exit') w.exitSplit(id ? Number(id) : w.activeId);
+  else if (action === 'focus') w.activate(Number(id));
+});
+uiOn('ui:capture', (w) => w.capture());
+uiOn('ui:device', (w, id, rotate) => w.setDevice(String(id), !!rotate));
+uiOn('ui:read-later', (w) => w.addReadLater());
+uiOn('ui:tab-menu', (w, id) => w.tabMenu(id));
+uiOn('ui:mission-menu', (w) => {
+  Menu.buildFromTemplate(missions.length ? missions.slice(0, 12).map((m) => ({ label: m.title, click: () => w.addToMission(m.id) }))
+    : [{ label: 'Nenhuma missão ainda — crie em Missions', enabled: false }]).popup({ window: w.win });
+});
+uiOn('ui:set-setting', (w, key, value) => {
+  if (key === 'layoutMode' && ['auto', 'orbit', 'focus'].includes(value)) settings.layoutMode = value;
+  else if (key === 'rightPanel') settings.rightPanel = !!value;
+  else return;
+  save('settings', settings); broadcastSettings();
+});
+uiOn('ui:palette-run', (w, item) => w.paletteRun(item));
+uiOn('ui:orbit', (w, action, id) => { if (action === 'open') w.openOrbit(id); else if (action === 'save') w.saveSpaceAsOrbit(); });
+uiOn('ui:mission', (w, action, id) => { if (action === 'open') w.openMission(id); });
+const uiHandle = (ch, fn) => ipcMain.handle(ch, (e, ...a) => { const w = winOf(e); if (!w || e.sender !== w.ui.webContents) return null; try { return fn(w, ...a); } catch (err) { console.error(ch, err); return null; } });
+uiHandle('ui:media', (w) => w.mediaList());
+uiHandle('ui:media-action', (w, id, action) => w.mediaAction(Number(id), String(action)));
+uiHandle('ui:perf', (w) => w.perfInfo());
+uiHandle('ui:perf-action', (w, action, id) => w.perfAction(String(action), Number(id)));
+uiHandle('ui:palette', (w, q) => w.paletteQuery(q));
 uiOn('ui:focus-page', (w) => { const t = w.active; if (t) t.view.webContents.focus(); });
 uiOn('ui:find', (w, text, opts) => { const t = w.active; if (t && text) t.view.webContents.findInPage(text, opts || {}); });
 uiOn('ui:stop-find', (w) => { const t = w.active; if (t) t.view.webContents.stopFindInPage('clearSelection'); });
 uiOn('ui:move-tab', (w, id, toIndex) => {
   const i = w.tabs.findIndex((x) => x.id === id); if (i < 0) return;
   const [t] = w.tabs.splice(i, 1); w.tabs.splice(Math.max(0, Math.min(toIndex, w.tabs.length)), 0, t); w.sendTabs();
-});
-uiOn('ui:tab-menu', (w, id) => {
-  const t = w.tabs.find((x) => x.id === id); if (!t) return;
-  const wc = t.view.webContents;
-  Menu.buildFromTemplate([
-    { label: 'Nova aba à direita', click: () => w.newTab(null, { index: w.tabs.indexOf(t) + 1 }) },
-    { label: 'Recarregar', click: () => wc.reload() },
-    { label: 'Duplicar', click: () => w.newTab(wc.getURL(), { index: w.tabs.indexOf(t) + 1 }) },
-    { label: wc.isAudioMuted() ? 'Ativar som do site' : 'Silenciar site', click: () => { wc.setAudioMuted(!wc.isAudioMuted()); w.sendTab(t); } },
-    { type: 'separator' },
-    { label: 'Fechar', click: () => w.closeTab(id) },
-    { label: 'Fechar outras abas', click: () => w.tabs.filter((x) => x.id !== id).forEach((x) => w.closeTab(x.id)) },
-    { label: 'Fechar abas à direita', click: () => w.tabs.slice(w.tabs.indexOf(t) + 1).forEach((x) => w.closeTab(x.id)) },
-    { type: 'separator' },
-    { label: 'Reabrir aba fechada', enabled: w.closedTabs.length > 0, click: () => w.reopen() },
-  ]).popup({ window: w.win });
 });
 uiOn('ui:bookmark-menu', (w, bid) => {
   const b = bookmarks.find((x) => x.id === bid); if (!b) return;
@@ -1487,20 +2023,20 @@ ipcMain.handle('ui:suggest', (e, text) => {
 /* ----------------------------------------------------------- internal IPC */
 function isInternal(e) {
   const f = e.senderFrame;
-  return !!(f && f.url && f.url.startsWith('aurora://') && f === e.sender.mainFrame && trusted.has(e.sender));
+  return !!(f && f.url && f.url.startsWith('antares://') && f === e.sender.mainFrame && trusted.has(e.sender));
 }
-const internal = (ch, fn) => ipcMain.handle(ch, (e, ...a) => { if (!isInternal(e)) throw new Error('denied'); return fn(e, ...a); });
+const internal = (ch, fn) => ipcMain.handle(ch, (e, ...a) => { if (!isInternal(e)) { if (process.env.ANTARES_DEBUG) console.error('DENY', ch, e.sender.getURL(), e.senderFrame && e.senderFrame.url, trusted.has(e.sender), e.senderFrame === e.sender.mainFrame); throw new Error('denied'); } return fn(e, ...a); });
 
-internal('aurora:settings', () => ({
+internal('antares:settings', () => ({
   ...publicSettings(), version: app.getVersion(), chrome: process.versions.chrome, electron: process.versions.electron,
   blocked: blockedTotal, platform: process.platform, downloadsDir: app.getPath('downloads'),
   filters: filterCount(), filtersUpdated: settings.filtersUpdated, buildDate: BUILD_DATE, update: updateInfo,
   exceptions: Object.keys(settings.popupAllow).length + Object.keys(settings.adblockAllow).length + Object.keys(settings.permissions).length,
 }));
-internal('aurora:update-filters', async () => ({ ok: await updateFilterLists(true), filters: filterCount(), filtersUpdated: settings.filtersUpdated }));
-internal('aurora:check-update', async () => { await checkEngineUpdate(true); return updateInfo; });
-internal('aurora:clear-exceptions', () => { settings.popupAllow = {}; settings.adblockAllow = {}; settings.permissions = {}; httpExempt.clear(); save('settings', settings); return true; });
-internal('aurora:allow-http', (e, url) => {
+internal('antares:update-filters', async () => ({ ok: await updateFilterLists(true), filters: filterCount(), filtersUpdated: settings.filtersUpdated }));
+internal('antares:check-update', async () => { await checkEngineUpdate(true); return updateInfo; });
+internal('antares:clear-exceptions', () => { settings.popupAllow = {}; settings.adblockAllow = {}; settings.permissions = {}; httpExempt.clear(); save('settings', settings); return true; });
+internal('antares:allow-http', (e, url) => {
   // only from the HTTPS warning page, only for the page it is warning about
   try {
     const cur = new URL(e.sender.getURL());
@@ -1509,8 +2045,10 @@ internal('aurora:allow-http', (e, url) => {
     httpExempt.add(u.hostname); return true;
   } catch { return false; }
 });
-internal('aurora:set-settings', (e, patch) => {
-  const allowed = ['searchEngine', 'homepage', 'startup', 'showBookmarksBar', 'theme', 'askDownloadLocation', 'blockTrackers', 'httpsOnly', 'gpc', 'tabSleep'];
+internal('antares:set-settings', (e, patch) => {
+  const allowed = ['searchEngine', 'homepage', 'startup', 'showBookmarksBar', 'theme', 'askDownloadLocation', 'blockTrackers', 'httpsOnly', 'gpc', 'tabSleep', 'layoutMode', 'rightPanel'];
+  if ('layoutMode' in patch && !['auto', 'orbit', 'focus'].includes(patch.layoutMode)) delete patch.layoutMode;
+  if ('rightPanel' in patch) patch.rightPanel = !!patch.rightPanel;
   if ('homepage' in patch && !(isWebUrl(patch.homepage) || patch.homepage === HOME)) delete patch.homepage;
   for (const k of ['showBookmarksBar', 'askDownloadLocation', 'blockTrackers', 'httpsOnly', 'gpc', 'tabSleep']) if (k in patch) patch[k] = !!patch[k];
   for (const k of allowed) if (k in patch) settings[k] = patch[k];
@@ -1519,28 +2057,28 @@ internal('aurora:set-settings', (e, patch) => {
   save('settings', settings); broadcastSettings();
   return publicSettings();
 });
-internal('aurora:resolve', (e, text) => toUrl(text));
-internal('aurora:bookmarks', () => bookmarks);
-internal('aurora:remove-bookmark', (e, id) => { bookmarks = bookmarks.filter((b) => b.id !== id); save('bookmarks', bookmarks); broadcastBookmarks(); for (const w of BrowserWin.all) w.sendTabs(); return bookmarks; });
-internal('aurora:edit-bookmark', (e, id, patch) => {
+internal('antares:resolve', (e, text) => toUrl(text));
+internal('antares:bookmarks', () => bookmarks);
+internal('antares:remove-bookmark', (e, id) => { bookmarks = bookmarks.filter((b) => b.id !== id); save('bookmarks', bookmarks); broadcastBookmarks(); for (const w of BrowserWin.all) w.sendTabs(); return bookmarks; });
+internal('antares:edit-bookmark', (e, id, patch) => {
   const b = bookmarks.find((x) => x.id === id);
   if (b) { if (patch.title != null) b.title = String(patch.title); if (patch.url) b.url = toUrl(patch.url) || b.url; save('bookmarks', bookmarks); broadcastBookmarks(); }
   return bookmarks;
 });
-internal('aurora:move-bookmark', (e, id, toIndex) => {
+internal('antares:move-bookmark', (e, id, toIndex) => {
   const i = bookmarks.findIndex((b) => b.id === id); if (i < 0) return bookmarks;
   const [b] = bookmarks.splice(i, 1); bookmarks.splice(Math.max(0, Math.min(toIndex, bookmarks.length)), 0, b);
   save('bookmarks', bookmarks); broadcastBookmarks(); return bookmarks;
 });
-internal('aurora:history', (e, query, limit = 300, offset = 0) => {
+internal('antares:history', (e, query, limit = 300, offset = 0) => {
   const q = String(query || '').toLowerCase();
   const list = q ? history.filter((h) => h.url.toLowerCase().includes(q) || (h.title || '').toLowerCase().includes(q)) : history;
   const o = Math.max(0, offset | 0); const l = Math.min(1000, Math.max(1, limit | 0));
   return { items: list.slice(o, o + l), total: list.length };
 });
-internal('aurora:remove-history', (e, time, url) => { history = history.filter((h) => !(h.time === time && h.url === url)); save('history', history); return true; });
-internal('aurora:is-private', (e) => e.sender.session !== session.defaultSession);
-internal('aurora:top-sites', (e) => {
+internal('antares:remove-history', (e, time, url) => { history = history.filter((h) => !(h.time === time && h.url === url)); save('history', history); return true; });
+internal('antares:is-private', (e) => e.sender.session !== session.defaultSession);
+internal('antares:top-sites', (e) => {
   if (e.sender.session !== session.defaultSession) return [];
   const counts = new Map();
   for (const h of history.slice(0, 3000)) {
@@ -1559,13 +2097,114 @@ internal('aurora:top-sites', (e) => {
   }
   return top;
 });
-internal('aurora:downloads', (e) => {
+/* ---- Antares universe: spaces, orbits, missions, read later, shortcuts, star map */
+const isPrivSender = (e) => e.sender.session !== session.defaultSession;
+const senderWin = (e) => BrowserWin.fromWebContents(e.sender);
+const cleanStr = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+internal('antares:universe', (e) => {
+  if (isPrivSender(e)) return { private: true, spaces: [], orbits: [], missions: [], readLater: [], tabs: [] };
+  const tabs = [];
+  for (const w of normalWindows()) for (const t of w.tabs) tabs.push({ id: t.id, title: t.title, url: tabUrl(t), favicon: t.favicon, space: t.spaceId, active: t.id === w.activeId, sleeping: !!t.sleeping });
+  return { spaces: spaceList(), orbits, missions, readLater, tabs, shortcuts: Array.isArray(settings.shortcuts) ? settings.shortcuts : DEFAULT_SHORTCUTS, recents: recentItems() };
+});
+internal('antares:space-action', (e, action, id, value) => {
+  if (isPrivSender(e)) return null;
+  const w = senderWin(e) || BrowserWin.focused();
+  if (action === 'add') {
+    const list = spaceList(); const nm = cleanStr(value, 24) || `Space ${list.length + 1}`;
+    settings.spaces = [...list, { id: uid(), name: nm, color: SPACE_COLORS[list.length % SPACE_COLORS.length] }];
+  } else if (action === 'rename') { const nm = cleanStr(value, 24); if (nm) settings.spaces = spaceList().map((x) => (x.id === id ? { ...x, name: nm } : x)); }
+  else if (action === 'color') { if (/^#[0-9a-f]{6}$/i.test(String(value))) settings.spaces = spaceList().map((x) => (x.id === id ? { ...x, color: value } : x)); }
+  else if (action === 'delete') { deleteSpace(id); return spaceList(); }
+  else if (action === 'open') { if (w) w.switchSpace(id); return spaceList(); }
+  else if (action === 'orbit') { if (w) w.saveSpaceAsOrbit(id); return spaceList(); }
+  else if (action === 'go-tab') { for (const x of normalWindows()) { const t = x.tabs.find((y) => y.id === Number(id)); if (t) { x.activate(t.id); x.win.focus(); } } return spaceList(); }
+  else return null;
+  save('settings', settings); broadcastSpaces();
+  return spaceList();
+});
+internal('antares:orbit-action', (e, action, id, value) => {
+  if (isPrivSender(e)) return null;
+  const w = senderWin(e) || BrowserWin.focused();
+  if (action === 'open') { if (w) w.openOrbit(id); return orbits; }
+  if (action === 'save') { if (w) w.saveSpaceAsOrbit(w.spaceId, cleanStr(value, 60) || null); return orbits; }
+  if (action === 'rename') { const o = orbits.find((x) => x.id === id); const nm = cleanStr(value, 60); if (o && nm) o.name = nm; }
+  else if (action === 'delete') orbits = orbits.filter((x) => x.id !== id);
+  else if (action === 'remove-page') { const o = orbits.find((x) => x.id === id); if (o) o.tabs = (o.tabs || []).filter((x) => x.url !== value); }
+  else return null;
+  save('orbits', orbits); broadcastCollections(); return orbits;
+});
+internal('antares:mission-action', (e, action, id, value) => {
+  if (isPrivSender(e)) return null;
+  const w = senderWin(e) || BrowserWin.focused();
+  const m = missions.find((x) => x.id === id);
+  if (action === 'create') {
+    const title = cleanStr(value && value.title, 80); if (!title) return missions;
+    missions.unshift({ id: uid(), title, notes: cleanStr(value.notes, 2000), done: false, pages: [], tasks: [], created: Date.now(), updated: Date.now() });
+  } else if (action === 'open') { if (w) w.openMission(id); return missions; }
+  else if (!m) return missions;
+  else if (action === 'update') {
+    if (value && 'title' in value) { const t = cleanStr(value.title, 80); if (t) m.title = t; }
+    if (value && 'notes' in value) m.notes = cleanStr(value.notes, 2000);
+    if (value && 'done' in value) m.done = !!value.done;
+    m.updated = Date.now();
+  } else if (action === 'delete') missions = missions.filter((x) => x !== m);
+  else if (action === 'add-task') { const t = cleanStr(value, 140); if (t) (m.tasks = m.tasks || []).push({ id: uid(), text: t, done: false }); }
+  else if (action === 'toggle-task') { const t = (m.tasks || []).find((x) => x.id === value); if (t) t.done = !t.done; }
+  else if (action === 'remove-task') m.tasks = (m.tasks || []).filter((x) => x.id !== value);
+  else if (action === 'add-page') {
+    const url = String(value && value.url || '');
+    if (isWebUrl(url) && !(m.pages || []).some((x) => x.url === url)) (m.pages = m.pages || []).push({ url, title: cleanStr(value.title, 200) || url, favicon: '' });
+  } else if (action === 'add-current') {
+    if (w && w.active) { w.addToMission(id, w.active); return missions; }
+  } else if (action === 'remove-page') m.pages = (m.pages || []).filter((x) => x.url !== value);
+  else return null;
+  if (m) m.updated = Date.now();
+  save('missions', missions); broadcastCollections(); return missions;
+});
+internal('antares:readlater-action', (e, action, url) => {
+  if (isPrivSender(e)) return [];
+  if (action === 'remove') readLater = readLater.filter((x) => x.url !== url);
+  else if (action === 'clear') readLater = [];
+  else return readLater;
+  save('readlater', readLater); broadcastCollections(); return readLater;
+});
+internal('antares:shortcuts', (e, list) => {
+  if (isPrivSender(e)) return DEFAULT_SHORTCUTS;
+  if (Array.isArray(list)) {
+    settings.shortcuts = list.slice(0, 12).map((x) => ({ title: cleanStr(x && x.title, 40), url: String(x && x.url || '') }))
+      .filter((x) => isWebUrl(x.url)).map((x) => ({ ...x, title: x.title || hostOf(x.url).replace(/^www\./, '') }));
+    save('settings', settings); broadcastSettings();
+  }
+  return Array.isArray(settings.shortcuts) ? settings.shortcuts : DEFAULT_SHORTCUTS;
+});
+internal('antares:star-map', (e) => {
+  // what the "Mapa Estelar" draws: spaces as constellations, open tabs as stars, most visited sites as distant stars
+  if (isPrivSender(e)) return { private: true };
+  const tabs = [];
+  for (const w of normalWindows()) for (const t of w.tabs) tabs.push({ id: t.id, title: t.title, url: tabUrl(t), favicon: t.favicon, space: t.spaceId, active: t.id === w.activeId, sleeping: !!t.sleeping, opener: t.openerId });
+  const counts = new Map();
+  for (const h of history.slice(0, 4000)) {
+    const host = hostOf(h.url); if (!host || !isWebUrl(h.url)) continue;
+    const c = counts.get(host) || { host, n: 0, url: new URL(h.url).origin, favicon: h.favicon || '', last: h.time };
+    c.n++; if (!c.favicon && h.favicon) c.favicon = h.favicon; counts.set(host, c);
+  }
+  const sites = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 40);
+  return { spaces: spaceList(), tabs, sites, orbits: orbits.map((o) => ({ id: o.id, name: o.name, space: o.space, count: (o.tabs || []).length })), missions: missions.map((m) => ({ id: m.id, title: m.title, pages: (m.pages || []).length, done: !!m.done })) };
+});
+internal('antares:open', (e, url, newTab) => {
+  const w = senderWin(e); if (!w || !(isWebUrl(url) || /^antares:\/\//.test(url))) return false;
+  if (newTab) w.newTab(url, { background: false }); else { const t = w.tabs.find((x) => x.view.webContents === e.sender); if (t) t.view.webContents.loadURL(url).catch(() => {}); }
+  return true;
+});
+
+internal('antares:downloads', (e) => {
   // a private window lists only its own downloads; normal windows never show private ones
   const priv = e.sender.session !== session.defaultSession;
   return downloads.filter((d) => !!d.private === priv)
     .map(({ private: p, ...d }) => ({ ...d, exists: d.state === 'completed' && !!d.path && fs.existsSync(d.path) }));
 });
-internal('aurora:download-action', (e, id, action) => {
+internal('antares:download-action', (e, id, action) => {
   const d = downloads.find((x) => x.id === id); if (!d) return false;
   const item = dlItems.get(id);
   if (action === 'open') shell.openPath(d.path);
@@ -1578,13 +2217,13 @@ internal('aurora:download-action', (e, id, action) => {
   broadcastDownloads(); save('downloads', persistableDownloads());
   return true;
 });
-internal('aurora:clear-downloads', (e) => {
+internal('antares:clear-downloads', (e) => {
   const priv = e.sender.session !== session.defaultSession;
   for (let i = downloads.length - 1; i >= 0; i--) if (downloads[i].state !== 'progressing' && !!downloads[i].private === priv) downloads.splice(i, 1);
   broadcastDownloads(); save('downloads', persistableDownloads()); return true;
 });
-internal('aurora:open-downloads-folder', () => shell.openPath(app.getPath('downloads')));
-internal('aurora:clear-data', async (e, opts) => {
+internal('antares:open-downloads-folder', () => shell.openPath(app.getPath('downloads')));
+internal('antares:clear-data', async (e, opts) => {
   const since = opts.range ? Date.now() - opts.range : 0;
   if (opts.history) { history = since ? history.filter((h) => h.time < since) : []; save('history', history); }
   const ses = session.defaultSession;
@@ -1602,7 +2241,7 @@ function isDefaultBrowser() {
       { windowsHide: true }, (err, out) => resolve(!err && /AuroraURL/i.test(String(out))));
   });
 }
-internal('aurora:set-default', async () => {
+internal('antares:set-default', async () => {
   if (process.platform === 'win32') {
     await shell.openExternal('ms-settings:defaultapps?registeredAppUser=Aurora');
   } else {
@@ -1610,8 +2249,8 @@ internal('aurora:set-default', async () => {
   }
   return isDefaultBrowser();
 });
-internal('aurora:is-default', () => isDefaultBrowser());
-internal('aurora:import-bookmarks', async (e) => {
+internal('antares:is-default', () => isDefaultBrowser());
+internal('antares:import-bookmarks', async (e) => {
   const w = BrowserWin.fromWebContents(e.sender);
   const r = await dialog.showOpenDialog(w ? w.win : undefined, { filters: [{ name: 'Favoritos HTML (Chrome, Edge, Firefox)', extensions: ['html', 'htm'] }], properties: ['openFile'] });
   if (r.canceled || !r.filePaths[0]) return 0;
@@ -1625,7 +2264,7 @@ internal('aurora:import-bookmarks', async (e) => {
   save('bookmarks', bookmarks); broadcastBookmarks();
   return n;
 });
-internal('aurora:export-bookmarks', async (e) => {
+internal('antares:export-bookmarks', async (e) => {
   const w = BrowserWin.fromWebContents(e.sender);
   const r = await dialog.showSaveDialog(w ? w.win : undefined, { defaultPath: path.join(app.getPath('documents'), 'favoritos-aurora.html') });
   if (r.canceled || !r.filePath) return false;
@@ -1636,8 +2275,8 @@ internal('aurora:export-bookmarks', async (e) => {
 });
 
 /* ------------------------------------------------------- engine update check */
-// Aurora cannot patch Chromium by itself; it checks whether a newer, fixed Electron/Chromium
-// exists for its line and warns the user to install a newer Aurora build.
+// Antares cannot patch Chromium by itself; it checks whether a newer, fixed Electron/Chromium
+// exists for its line and warns the user to install a newer Antares build.
 const updateInfo = { current: process.versions.electron, latest: null, supported: true, newerMajor: null, checked: 0, dismissed: null, error: null };
 function cmpVer(a, b) { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; }
 async function checkEngineUpdate(force = false) {
@@ -1659,9 +2298,9 @@ async function checkEngineUpdate(force = false) {
 }
 function updateNeeded() {
   const ageDays = (Date.now() - Date.parse(BUILD_DATE)) / 864e5;
-  if (updateInfo.latest && cmpVer(updateInfo.latest, updateInfo.current) > 0) return `Saiu uma correção de segurança do motor Chromium (Electron ${updateInfo.latest}). Instale uma versão nova do Aurora.`;
-  if (!updateInfo.supported) return 'Esta versão do motor Chromium não recebe mais correções de segurança. Instale uma versão nova do Aurora.';
-  if (!updateInfo.checked && ageDays > 60) return 'Esta versão do Aurora tem mais de 2 meses e pode estar sem correções de segurança recentes.';
+  if (updateInfo.latest && cmpVer(updateInfo.latest, updateInfo.current) > 0) return `Saiu uma correção de segurança do motor Chromium (Electron ${updateInfo.latest}). Instale uma versão nova do Antares.`;
+  if (!updateInfo.supported) return 'Esta versão do motor Chromium não recebe mais correções de segurança. Instale uma versão nova do Antares.';
+  if (!updateInfo.checked && ageDays > 60) return 'Esta versão do Antares tem mais de 2 meses e pode estar sem correções de segurança recentes.';
   return null;
 }
 function broadcastUpdate() {
@@ -1686,7 +2325,7 @@ function urlsFromArgv(argv) {
 }
 
 // Sites may ask for a personal digital certificate (e-CPF, e-CNPJ, corporate ID). Electron would
-// silently send the first installed certificate; Aurora asks which one, if any, to send.
+// silently send the first installed certificate; Antares asks which one, if any, to send.
 app.on('select-client-certificate', (event, wc, url, list, callback) => {
   event.preventDefault();
   // Chromium passes "host:port" here (no scheme)
@@ -1726,6 +2365,14 @@ app.whenReady().then(() => {
   settings.permissions = settings.permissions || {};
   bookmarks = load('bookmarks', []);
   history = load('history', []);
+  orbits = load('orbits', []); missions = load('missions', []); readLater = load('readlater', []);
+  if (!Array.isArray(orbits)) orbits = []; if (!Array.isArray(missions)) missions = []; if (!Array.isArray(readLater)) readLater = [];
+  try { const th = load('thumbs', {}); for (const [k, v] of Object.entries(th || {})) if (typeof v === 'string' && v.startsWith('data:image/jpeg')) thumbs.set(k, v); } catch {}
+  // from Aurora 1.x
+  if (typeof settings.homepage === 'string' && /^aurora:/i.test(settings.homepage)) settings.homepage = settings.homepage.replace(/^aurora:/i, 'antares:');
+  if (!['auto', 'orbit', 'focus'].includes(settings.layoutMode)) settings.layoutMode = 'auto';
+  if (typeof settings.rightPanel !== 'boolean') settings.rightPanel = true;
+  if (!Array.isArray(settings.spaces) || !settings.spaces.length) settings.spaces = DEFAULT_SPACES.map((x) => ({ ...x }));
   for (const k of ['popupAllow', 'adblockAllow', 'permissions', 'zoom']) settings[k] = settings[k] && typeof settings[k] === 'object' ? settings[k] : {};
   // downloads list survives restarts
   for (const d of load('downloads', [])) if (d && d.id && d.state !== 'progressing') downloads.push(d);
@@ -1738,7 +2385,7 @@ app.whenReady().then(() => {
 
   // Present as a regular Chrome to websites
   app.userAgentFallback = app.userAgentFallback
-    .replace(/\s?Electron\/\S+/i, '').replace(/\s?aurora\/\S+/i, '').replace(/\s?Aurora\/\S+/, '');
+    .replace(/\s?Electron\/\S+/i, '').replace(/\s?(aurora|antares)\/\S+/ig, '');
 
   nativeTheme.on('updated', () => broadcastSettings());
 
@@ -1753,7 +2400,7 @@ app.whenReady().then(() => {
   setInterval(() => {
     // put tabs unused for 30 minutes to sleep to free memory
     if (!settings.tabSleep) return;
-    const limit = Number(process.env.AURORA_SLEEP_MS) || 30 * 60e3;
+    const limit = Number(process.env.ANTARES_SLEEP_MS) || 30 * 60e3;
     for (const w of BrowserWin.all) for (const t of w.tabs) {
       const wc = t.view.webContents;
       if (t.id === w.activeId || t.sleeping || t.loading || t.closing || !isWebUrl(tabUrl(t))) continue;
@@ -1761,7 +2408,7 @@ app.whenReady().then(() => {
       try { if (wc.isCurrentlyAudible() || wc.isDevToolsOpened() || wc.isBeingCaptured()) continue; } catch { continue; }
       w.sleepTab(t);
     }
-  }, Number(process.env.AURORA_SLEEP_MS) ? 3000 : 60e3);
+  }, Number(process.env.ANTARES_SLEEP_MS) ? 3000 : 60e3);
 });
 
 app.on('before-quit', () => { if (settings) saveSession(true); });

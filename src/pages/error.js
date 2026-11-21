@@ -14,7 +14,7 @@ const msgs = {
   crash: ['Ops! Algo deu errado', 'A página parou de funcionar. Tente recarregar.'],
   https: ['Este site não oferece conexão segura', 'Ele não funciona com HTTPS. Se continuar, outras pessoas na sua rede (Wi-Fi público, por exemplo) podem ver ou alterar o que você envia e recebe. Não digite senhas nem dados de cartão.'],
 };
-const m = msgs[code] || (location.hostname === 'error' ? ['Não foi possível acessar esta página', ''] : ['Página não encontrada', 'Esta página interna do Aurora não existe.']);
+const m = msgs[code] || (location.hostname === 'error' ? ['Não foi possível acessar esta página', ''] : ['Página não encontrada', 'Esta página interna do Antares não existe.']);
 $('#h').textContent = m[0];
 $('#p').textContent = (u ? host(u) + ' — ' : '') + m[1];
 $('#c').textContent = d ? `${d}${code && code !== 'crash' ? ' (' + code + ')' : ''}` : '';
@@ -22,9 +22,9 @@ document.title = u ? host(u) : 'Erro';
 if (code === 'https' && u.startsWith('http:')) {
   document.body.classList.add('warn');
   $('#retry').textContent = 'Voltar para a segurança';
-  $('#retry').onclick = () => location.replace('aurora://newtab');
+  $('#retry').onclick = () => location.replace('antares://newtab');
   $('#back').textContent = 'Continuar para o site (não seguro)';
-  $('#back').onclick = async () => { if (await aurora.allowHttp(u)) location.replace(u); };
+  $('#back').onclick = async () => { if (await antares.allowHttp(u)) location.replace(u); };
 } else {
   $('#retry').onclick = () => { if (u) location.replace(u); else location.reload(); };
   $('#back').onclick = () => history.back();

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Mapa Estelar — Antares</title>
+<link rel="stylesheet" href="pages.css">
+<style>
+  html, body { height: 100%; overflow: hidden; background: #050406; }
+  #sky { position: fixed; inset: 0; width: 100%; height: 100%; }
+  svg#map { position: fixed; inset: 0; width: 100%; height: 100%; cursor: grab; stroke: none; }
+  svg#map.drag { cursor: grabbing; }
+  svg#map text { font: 12px "Segoe UI", system-ui, sans-serif; fill: #f4ece2; paint-order: stroke; stroke: #050406; stroke-width: 3px; pointer-events: none; }
+  svg#map .space-label { font-size: 13px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+  svg#map .node { cursor: pointer; }
+  svg#map .node:hover circle.core { filter: url(#glow2); }
+  .hud { position: fixed; left: 20px; top: 18px; pointer-events: none; }
+  .hud h1 { margin: 0; font-size: 18px; letter-spacing: .3em; text-transform: uppercase; color: var(--accent2); font-weight: 600; }
+  .hud p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+  .legend { position: fixed; left: 20px; bottom: 18px; max-width: calc(100% - 220px); display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 12px; background: rgba(22, 17, 14, .8); border: 1px solid var(--border); padding: 8px 14px; border-radius: 10px; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .tools { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 6px; }
+  .tools button { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; background: rgba(22, 17, 14, .85); }
+  #tip { position: fixed; pointer-events: none; background: rgba(22, 17, 14, .95); border: 1px solid rgba(255, 138, 52, .4); padding: 8px 12px; border-radius: 10px; max-width: 320px; font-size: 12.5px; z-index: 5; }
+  #tip b { display: block; margin-bottom: 2px; }
+  #tip small { color: var(--muted); word-break: break-all; }
+  .stats { position: fixed; right: 20px; top: 18px; text-align: right; color: var(--muted); font-size: 12px; line-height: 1.7; pointer-events: none; }
+  .stats b { color: var(--text); font-size: 15px; }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<svg id="map" xmlns="http://www.w3.org/2000/svg"><defs>
+  <filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="glow2" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <radialGradient id="sunG" cx="45%" cy="40%" r="60%"><stop offset="0" stop-color="#fff6dc"/><stop offset=".3" stop-color="#ffc062"/><stop offset=".75" stop-color="#ff7a1a"/><stop offset="1" stop-color="#8a2a00"/></radialGradient>
+</defs><g id="world"></g></svg>
+<div class="hud"><h1>Mapa Estelar</h1><p>Suas Spaces são constelações; cada aba aberta é uma estrela. Os sites que você mais visita brilham ao longe.</p></div>
+<div class="stats" id="stats"></div>
+<div class="legend"><span><i style="background:#ffb347"></i>Aba aberta</span><span><i style="background:#7d6d60"></i>Aba em repouso</span><span><i style="background:#e8e2d6;opacity:.7"></i>Site visitado (tamanho = visitas)</span><span>Arraste para mover · roda do mouse para aproximar</span></div>
+<div class="tools"><button id="zin" title="Aproximar">+</button><button id="zout" title="Afastar">−</button><button id="zreset" title="Centralizar">◎</button><button id="reload" title="Atualizar">↻</button></div>
+<div id="tip" hidden></div>
+<script src="common.js"></script>
+<script src="mapa.js"></script>
+</body>
+</html>

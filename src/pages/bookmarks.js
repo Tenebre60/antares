@@ -1,5 +1,5 @@
 let all = [];
-async function load() { all = await aurora.bookmarks(); render(); }
+async function load() { all = await antares.bookmarks(); render(); }
 function render() {
   const q = $('#q').value.toLowerCase();
   const items = q ? all.filter((b) => b.url.toLowerCase().includes(q) || (b.title || '').toLowerCase().includes(q)) : all;
@@ -15,14 +15,14 @@ function render() {
 $('#list').addEventListener('click', async (e) => {
   const row = e.target.closest('.row'); if (!row) return;
   const id = row.dataset.id; const b = all.find((x) => x.id === id);
-  if (e.target.closest('.del')) { all = await aurora.removeBookmark(id); render(); toast('Favorito removido'); return; }
+  if (e.target.closest('.del')) { all = await antares.removeBookmark(id); render(); toast('Favorito removido'); return; }
   if (e.target.closest('.edit')) {
     row.classList.add('edit');
     row.querySelector('.main').innerHTML = `<input type="text" class="et" value="${esc(b.title)}"><input type="text" class="eu" value="${esc(b.url)}">`;
     row.querySelector('.actions').innerHTML = '<button class="primary save">Salvar</button>';
     row.querySelector('.et').focus(); return;
   }
-  if (e.target.closest('.save')) { all = await aurora.editBookmark(id, { title: row.querySelector('.et').value, url: row.querySelector('.eu').value }); render(); return; }
+  if (e.target.closest('.save')) { all = await antares.editBookmark(id, { title: row.querySelector('.et').value, url: row.querySelector('.eu').value }); render(); return; }
   if (e.target.closest('.title')) location.href = row.dataset.url;
 });
 $('#list').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.closest('.edit')) e.target.closest('.row').querySelector('.save').click(); });
@@ -32,9 +32,9 @@ $('#list').addEventListener('dragover', (e) => { const r = e.target.closest('.ro
 $('#list').addEventListener('drop', async (e) => {
   const r = e.target.closest('.row'); if (!r || !dragId) return; e.preventDefault();
   let to = all.findIndex((x) => x.id === r.dataset.id); const from = all.findIndex((x) => x.id === dragId);
-  if (from < to) to--; all = await aurora.moveBookmark(dragId, to); dragId = null; render();
+  if (from < to) to--; all = await antares.moveBookmark(dragId, to); dragId = null; render();
 });
 $('#q').addEventListener('input', render);
-$('#import').onclick = async () => { const n = await aurora.importBookmarks(); if (n) { toast(`${n} favoritos importados`); load(); } };
-$('#export').onclick = async () => { if (await aurora.exportBookmarks()) toast('Favoritos exportados'); };
+$('#import').onclick = async () => { const n = await antares.importBookmarks(); if (n) { toast(`${n} favoritos importados`); load(); } };
+$('#export').onclick = async () => { if (await antares.exportBookmarks()) toast('Favoritos exportados'); };
 load();

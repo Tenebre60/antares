@@ -25,7 +25,7 @@ exports.default = async function afterPack(context) {
   const exePath = path.join(context.appOutDir, `${pkg.productFilename}.exe`);
   if (context.electronPlatformName !== 'win32') {
     const { [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: _skip, ...rest } = FUSES; // integrity: Windows/macOS only
-    await flipFuses(path.join(context.appOutDir, context.packager.executableName || 'aurora'), rest);
+    await flipFuses(path.join(context.appOutDir, context.packager.executableName || 'antares'), rest);
     return;
   }
   const exe = ResEdit.NtExecutable.from(fs.readFileSync(exePath), { ignoreCert: true });
@@ -44,8 +44,8 @@ exports.default = async function afterPack(context) {
   const langs = vi.getAllLanguagesForStringValues();
   for (const l of langs) {
     vi.setStringValues(l, {
-      FileDescription: 'Aurora', ProductName: 'Aurora', CompanyName: 'Aurora',
-      InternalName: 'Aurora', OriginalFilename: 'Aurora.exe', LegalCopyright: `Copyright © ${new Date().getFullYear()} Aurora`,
+      FileDescription: 'Antares', ProductName: 'Antares', CompanyName: 'Antares',
+      InternalName: 'Antares', OriginalFilename: 'Antares.exe', LegalCopyright: `Copyright © ${new Date().getFullYear()} Antares`,
       FileVersion: pkg.version, ProductVersion: pkg.version,
     });
   }

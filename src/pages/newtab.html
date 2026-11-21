@@ -4,49 +4,44 @@
 <meta charset="utf-8">
 <title>Nova aba</title>
 <link rel="stylesheet" href="pages.css">
-<style>
-  body { min-height: 100vh; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
-  .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--bg); }
-  .sky i { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .55; animation: drift 24s ease-in-out infinite alternate; }
-  .sky i:nth-child(1) { width: 60vw; height: 40vh; left: -10vw; top: -12vh; background: #2dd4bf; }
-  .sky i:nth-child(2) { width: 55vw; height: 45vh; right: -12vw; top: -8vh; background: #8b5cf6; animation-delay: -8s; }
-  .sky i:nth-child(3) { width: 50vw; height: 35vh; left: 25vw; top: 2vh; background: #3b82f6; opacity: .35; animation-delay: -16s; }
-  @media (prefers-color-scheme: light) { .sky i { opacity: .28; } .sky i:nth-child(3) { opacity: .18; } }
-  @keyframes drift { to { transform: translate(6vw, 4vh) scale(1.15); } }
-  .wrap { margin-top: max(9vh, 40px); width: min(640px, 90vw); display: flex; flex-direction: column; align-items: center; }
-  .clock { font-size: 64px; font-weight: 300; letter-spacing: -2px; line-height: 1; }
-  .greet { color: var(--muted); margin: 8px 0 30px; font-size: 15px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 26px; }
-  .brand img { width: 28px; height: 28px; }
-  form { width: 100%; position: relative; }
-  #q { width: 100%; height: 52px; border-radius: 26px; padding: 0 22px 0 52px; font-size: 16px; background: var(--card); border: 1.5px solid var(--border); box-shadow: 0 6px 24px rgba(0,0,0,.12); }
-  #q:focus { border-color: var(--accent); }
-  form svg { position: absolute; left: 20px; top: 17px; color: var(--muted); }
-  .tiles { display: grid; grid-template-columns: repeat(4, 112px); gap: 10px; margin-top: 40px; justify-content: center; }
-  .tile { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 8px 12px; border-radius: 14px; color: var(--text); }
-  .tile:hover { background: color-mix(in srgb, var(--card) 80%, transparent); }
-  .tile .ic { width: 48px; height: 48px; border-radius: 50%; background: var(--card); display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.1); font-weight: 700; font-size: 18px; color: var(--accent); text-transform: uppercase; }
-  .tile .ic img { width: 24px; height: 24px; }
-  .tile span { font-size: 12.5px; max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .privnote { margin-top: 36px; max-width: 520px; color: var(--muted); text-align: center; line-height: 1.6; }
-  .priv .sky i:nth-child(1) { background: #6d28d9; } .priv .sky i:nth-child(3) { background: #9333ea; }
-  .foot { position: fixed; bottom: 14px; right: 18px; font-size: 12px; color: var(--muted); }
-  @media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, 112px); } }
-</style>
+<link rel="stylesheet" href="newtab.css">
 </head>
 <body>
-<div class="sky"><i></i><i></i><i></i></div>
-<div class="wrap">
-  <div class="brand"><img src="logo.svg" alt="">Aurora</div>
-  <div class="clock" id="clock">--:--</div>
-  <div class="greet" id="greet"></div>
-  <form id="f" autocomplete="off">
+<canvas id="space"></canvas>
+<main class="wrap">
+  <section class="hero">
+    <canvas id="sun" width="300" height="300" aria-hidden="true"></canvas>
+    <h1 class="word">ANTARES</h1>
+    <div class="sub" id="greet"></div>
+  </section>
+
+  <form id="f" class="search cut" autocomplete="off">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
     <input id="q" type="text" placeholder="Pesquise na web ou digite um endereço" spellcheck="false">
+    <kbd>Ctrl K</kbd>
   </form>
-  <div class="tiles" id="tiles"></div>
-</div>
+
+  <section id="shortcuts-box">
+    <div class="sh-head"><span>Links rápidos</span><button id="edit" class="link" type="button">Editar</button></div>
+    <div class="tiles" id="tiles"></div>
+    <form id="addform" class="addform cut" hidden autocomplete="off">
+      <input id="add-title" type="text" placeholder="Nome (ex.: Notícias)" maxlength="40">
+      <input id="add-url" type="text" placeholder="Endereço (ex.: g1.globo.com)">
+      <button class="primary" type="submit">Adicionar</button>
+      <button type="button" id="add-cancel">Cancelar</button>
+    </form>
+  </section>
+
+  <section class="cards" id="cards">
+    <div class="ncard cut"><h2><svg viewBox="0 0 24 24"><path d="M5 12h12M13 6l6 6-6 6"/></svg>Continuar</h2><div id="continue" class="list"></div></div>
+    <div class="ncard cut"><h2><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Recentes</h2><div id="recent" class="list"></div></div>
+    <div class="ncard cut"><h2><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z"/></svg>Ler depois</h2><div id="later" class="list"></div></div>
+  </section>
+
+  <p class="privnote" id="privnote" hidden><b>Você está navegando no modo privado.</b><br>O Antares não vai salvar histórico, cookies nem dados de sites desta janela depois que ela for fechada. Downloads e favoritos criados aqui continuam salvos. Seu provedor de internet e os sites visitados ainda podem ver sua atividade.</p>
+</main>
 <div class="foot" id="foot"></div>
+<script src="common.js"></script>
 <script src="newtab.js"></script>
 </body>
 </html>

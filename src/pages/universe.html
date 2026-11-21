@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Universo Antares</title>
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="universe.css">
+</head>
+<body>
+<div class="page wide">
+  <div class="page-head">
+    <h1><img src="logo.svg" alt="" class="lg">Universo</h1>
+    <nav class="tabsnav" id="nav">
+      <a href="#spaces" data-s="spaces">Spaces</a>
+      <a href="#orbits" data-s="orbits">Orbits</a>
+      <a href="#missions" data-s="missions">Missions</a>
+      <a href="#ler-depois" data-s="ler-depois">Ler depois</a>
+    </nav>
+  </div>
+
+  <section id="s-spaces" class="sect">
+    <p class="intro">Spaces separam suas abas por contexto. Cada Space guarda as próprias abas; troque de Space na barra superior ou com <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd>. Arraste uma aba até o nome de uma Space para movê-la.</p>
+    <div class="grid" id="spaces"></div>
+    <form class="inline-add cut" id="space-add" autocomplete="off"><input type="text" id="space-name" placeholder="Nome da nova Space" maxlength="24"><button class="primary">Criar Space</button></form>
+  </section>
+
+  <section id="s-orbits" class="sect" hidden>
+    <p class="intro">Orbits são grupos de páginas salvos para abrir de novo de uma vez — por exemplo, tudo o que você usa para um projeto. Salve as abas da Space atual como uma Órbita.</p>
+    <form class="inline-add cut" id="orbit-add" autocomplete="off"><input type="text" id="orbit-name" placeholder="Nome da Órbita (opcional)" maxlength="60"><button class="primary">Salvar abas da Space atual</button></form>
+    <div class="grid" id="orbits"></div>
+  </section>
+
+  <section id="s-missions" class="sect" hidden>
+    <p class="intro">Missions são objetivos com tarefas, anotações e as páginas que você precisa para cumpri-los. Use o botão de bandeira na barra para adicionar a página aberta a uma missão.</p>
+    <form class="inline-add cut" id="mission-add" autocomplete="off"><input type="text" id="mission-title" placeholder="Nova missão (ex.: Planejar viagem)" maxlength="80"><button class="primary">Criar missão</button></form>
+    <div class="grid missions" id="missions"></div>
+  </section>
+
+  <section id="s-ler-depois" class="sect" hidden>
+    <p class="intro">Páginas guardadas com o botão “Ler depois” da barra de ferramentas.</p>
+    <div class="card" id="later"></div>
+    <div class="row-btns"><button id="later-clear" class="danger" hidden>Limpar a lista</button></div>
+  </section>
+</div>
+<script src="common.js"></script>
+<script src="universe.js"></script>
+</body>
+</html>

@@ -11,14 +11,16 @@
   .switch span { position: absolute; inset: 0; background: var(--field); border: 1px solid var(--border); border-radius: 22px; transition: .15s; cursor: pointer; }
   .switch span::after { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: var(--muted); border-radius: 50%; transition: .15s; }
   .switch input:checked + span { background: var(--accent); border-color: var(--accent); }
-  .switch input:checked + span::after { transform: translateX(18px); background: #fff; }
+  .switch input:checked + span::after { transform: translateX(18px); background: #1a0d03; }
   .clear-grid { display: grid; gap: 8px; padding: 14px 18px; }
   .clear-grid label { display: flex; gap: 10px; align-items: center; }
   .about { display: flex; gap: 18px; align-items: center; padding: 18px; }
   .about img { width: 56px; height: 56px; }
   #homeurl { width: 260px; }
   .nav { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
-  .nav a { padding: 6px 12px; border-radius: 99px; background: var(--field); color: var(--text); font-size: 13px; }
+  .nav a { padding: 6px 14px; border-radius: 99px; background: var(--field); border: 1px solid var(--border); color: var(--text); font-size: 13px; }
+  .nav a:hover { border-color: var(--accent); }
+  section h2 { color: var(--accent2); letter-spacing: .1em; text-transform: uppercase; font-size: 12.5px !important; }
   :target { scroll-margin-top: 20px; }
   :target .card { outline: 2px solid var(--accent); }
 </style></head>
@@ -27,11 +29,13 @@
   <div class="nav"><a href="#geral">Geral</a><a href="#privacidade">Privacidade</a><a href="#seguranca">Atualizações</a><a href="#limpar">Limpar dados</a><a href="#sobre">Sobre</a></div>
 
   <section id="geral"><h2>Geral</h2><div class="card">
-    <div class="opt" id="default-row"><div class="lbl">Navegador padrão<small id="default-state">Abra links do Windows e de outros apps no Aurora.</small></div><button id="mkdefault" class="primary">Tornar padrão</button></div>
+    <div class="opt" id="default-row"><div class="lbl">Navegador padrão<small id="default-state">Abra links do Windows e de outros apps no Antares.</small></div><button id="mkdefault" class="primary">Tornar padrão</button></div>
     <div class="opt"><div class="lbl">Mecanismo de pesquisa<small>Usado na barra de endereço e na nova aba.</small></div><select id="engine"></select></div>
-    <div class="opt"><div class="lbl">Ao iniciar<small>O que abrir quando o Aurora for aberto.</small></div><select id="startup"><option value="newtab">Abrir a página Nova aba</option><option value="restore">Continuar de onde parei</option></select></div>
-    <div class="opt"><div class="lbl">Página inicial<small>Aberta pelo botão de casa e em novas abas. Deixe vazio para a página Nova aba.</small></div><input type="text" id="homeurl" placeholder="aurora://newtab"></div>
-    <div class="opt"><div class="lbl">Tema</div><select id="theme"><option value="system">Igual ao sistema</option><option value="dark">Escuro</option><option value="light">Claro</option></select></div>
+    <div class="opt"><div class="lbl">Ao iniciar<small>O que abrir quando o Antares for aberto.</small></div><select id="startup"><option value="newtab">Abrir a página Nova aba</option><option value="restore">Continuar de onde parei</option></select></div>
+    <div class="opt"><div class="lbl">Página inicial<small>Aberta pelo botão de casa e em novas abas. Deixe vazio para a página Nova aba.</small></div><input type="text" id="homeurl" placeholder="antares://newtab"></div>
+    <div class="opt"><div class="lbl">Modo de exibição<small>Órbita mostra a barra lateral com nomes, o painel da direita e o dock completo. Foco deixa tudo compacto para dar mais espaço às páginas.</small></div><select id="layoutmode"><option value="auto">Automático (pelo tamanho da janela)</option><option value="orbit">Sempre Modo Órbita</option><option value="focus">Sempre Modo Foco</option></select></div>
+    <div class="opt"><div class="lbl">Painel da direita no Modo Órbita<small>Busca, Links rápidos e Recentes.</small></div><label class="switch"><input type="checkbox" id="rpanel"><span></span></label></div>
+    <div class="opt"><div class="lbl">Tema dos sites<small>Pede aos sites que usem a versão clara ou escura, quando existir.</small></div><select id="theme"><option value="system">Igual ao sistema</option><option value="dark">Escuro</option><option value="light">Claro</option></select></div>
     <div class="opt"><div class="lbl">Colocar abas sem uso em repouso<small>Abas que você não abre há 30 minutos liberam memória. Elas continuam na barra e voltam ao clicar, com o histórico de voltar/avançar.</small></div><label class="switch"><input type="checkbox" id="tabsleep"><span></span></label></div>
     <div class="opt"><div class="lbl">Mostrar barra de favoritos<small>Ctrl+Shift+B</small></div><label class="switch"><input type="checkbox" id="bbar"><span></span></label></div>
     <div class="opt"><div class="lbl">Perguntar onde salvar cada download<small id="dldir"></small></div><label class="switch"><input type="checkbox" id="askdl"><span></span></label></div>
@@ -49,7 +53,7 @@
 
   <section id="seguranca"><h2>Atualizações de segurança</h2><div class="card">
     <div class="opt"><div class="lbl">Motor Chromium<small id="engine-state">Verificando…</small></div><button id="chkupd">Verificar agora</button></div>
-    <div class="opt"><div class="lbl"><small>O Aurora verifica sozinho, duas vezes por dia, se saiu uma correção de segurança para o Chromium dele. Quando sair, uma faixa amarela aparece no topo: aí é só instalar uma versão nova do Aurora por cima da atual (seus favoritos e histórico são mantidos).</small></div></div>
+    <div class="opt"><div class="lbl"><small>O Antares verifica sozinho, duas vezes por dia, se saiu uma correção de segurança para o Chromium dele. Quando sair, uma faixa amarela aparece no topo: aí é só instalar uma versão nova do Antares por cima da atual (seus favoritos e histórico são mantidos).</small></div></div>
   </div></section>
 
   <section id="limpar"><h2>Limpar dados de navegação</h2><div class="card">
@@ -66,7 +70,7 @@
 
   <section id="sobre"><h2>Sobre</h2><div class="card"><div class="about">
     <img src="logo.svg" alt="">
-    <div><div style="font-size:18px;font-weight:650">Aurora</div><div id="ver" style="color:var(--muted);font-size:13px"></div><div style="color:var(--muted);font-size:12.5px;margin-top:4px">Feito com Chromium e Electron. Código aberto sob licença MIT.</div></div>
+    <div><div style="font-size:18px;font-weight:650">Antares</div><div id="ver" style="color:var(--muted);font-size:13px"></div><div style="color:var(--muted);font-size:12.5px;margin-top:4px">Feito com Chromium e Electron. Código aberto sob licença MIT.</div></div>
   </div></div></section>
 </div>
 <script src="common.js"></script>

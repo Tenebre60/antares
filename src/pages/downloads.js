@@ -1,7 +1,7 @@
 const fmt = (b) => { if (!b) return '0 B'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; const i = Math.min(4, Math.floor(Math.log(b) / Math.log(1024))); return (b / 1024 ** i).toFixed(i ? 1 : 0).replace('.', ',') + ' ' + u[i]; };
 let last = '';
 async function render() {
-  const items = await aurora.downloads();
+  const items = await antares.downloads();
   const sig = JSON.stringify(items); if (sig === last) return; last = sig;
   if (!items.length) { $('#list').innerHTML = '<div class="empty"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><div>Os arquivos que você baixar aparecem aqui.</div></div>'; return; }
   $('#list').innerHTML = '<div class="card">' + items.map((d) => {
@@ -26,9 +26,9 @@ async function render() {
 }
 $('#list').addEventListener('click', async (e) => {
   const row = e.target.closest('.row'); if (!row) return; const id = Number(row.dataset.id);
-  const b = e.target.closest('[data-a]'); if (b) { await aurora.downloadAction(id, b.dataset.a); last = ''; render(); return; }
-  if (e.target.closest('.title.open')) aurora.downloadAction(id, 'open');
+  const b = e.target.closest('[data-a]'); if (b) { await antares.downloadAction(id, b.dataset.a); last = ''; render(); return; }
+  if (e.target.closest('.title.open')) antares.downloadAction(id, 'open');
 });
-$('#folder').onclick = () => aurora.openDownloadsFolder();
-$('#clear').onclick = async () => { await aurora.clearDownloads(); last = ''; render(); };
+$('#folder').onclick = () => antares.openDownloadsFolder();
+$('#clear').onclick = async () => { await antares.clearDownloads(); last = ''; render(); };
 render(); setInterval(render, 700);

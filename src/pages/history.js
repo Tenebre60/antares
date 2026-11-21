@@ -2,7 +2,7 @@ const PAGE = 300;
 let items = []; let total = 0;
 async function load(reset) {
   if (reset) items = [];
-  const r = await aurora.history($('#q').value, PAGE, items.length);
+  const r = await antares.history($('#q').value, PAGE, items.length);
   items = items.concat(r.items); total = r.total;
   render();
 }
@@ -31,11 +31,11 @@ $('#list').addEventListener('click', async (e) => {
   const row = e.target.closest('.row'); if (!row) return;
   if (e.target.closest('.del')) {
     const time = Number(row.dataset.time); const url = row.dataset.url;
-    await aurora.removeHistory(time, url);
+    await antares.removeHistory(time, url);
     items = items.filter((h) => !(h.time === time && h.url === url)); total--; render(); return;
   }
   if (e.target.closest('.title')) location.href = row.dataset.url;
 });
 let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => load(true), 150); });
-$('#clear').onclick = () => { location.href = 'aurora://settings#limpar'; };
+$('#clear').onclick = () => { location.href = 'antares://settings#limpar'; };
 load(true);

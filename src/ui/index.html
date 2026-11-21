@@ -3,38 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
-<title>Aurora</title>
+<title>Antares</title>
 <link rel="stylesheet" href="ui.css">
 </head>
-<body>
-<header id="chrome">
-  <div id="tabstrip">
-    <div id="tabs" role="tablist"></div>
-    <button id="newtab" class="icon-btn" title="Nova aba (Ctrl+T)" aria-label="Nova aba">
-      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
-    <div class="drag-space"></div>
+<body class="mode-orbit">
+<div id="bg"><canvas id="stars"></canvas><div class="glow"></div></div>
+<div id="hole-fill"></div>
+
+<div id="app">
+  <!-- ===== top bar: brand · spaces · emblem · window controls ===== -->
+  <header id="top" class="drag">
+    <div id="brand" class="nodrag" title="Antares">
+      <svg class="logo" viewBox="0 0 48 48"><defs><radialGradient id="lg" cx="50%" cy="45%" r="55%"><stop offset="0" stop-color="#fff4d6"/><stop offset=".35" stop-color="#ffb347"/><stop offset=".8" stop-color="#ff6a00"/><stop offset="1" stop-color="#b33a00"/></radialGradient></defs><ellipse cx="24" cy="24" rx="22" ry="8" fill="none" stroke="#ff9a3c" stroke-width="1.6" transform="rotate(-24 24 24)" opacity=".85"/><circle cx="24" cy="24" r="11" fill="url(#lg)"/><circle cx="41" cy="15" r="2.2" fill="#ffd9a3"/></svg>
+      <span class="word">ANTARES</span>
+    </div>
+    <nav id="spaces" class="nodrag" aria-label="Spaces"></nav>
+    <div class="flex"></div>
+    <div id="emblem" aria-hidden="true">
+      <svg viewBox="0 0 220 34"><path d="M0 17h70l10-10h60l10 10h70" fill="none" stroke="currentColor" stroke-width="1"/><path d="M80 27h60" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/><circle cx="110" cy="17" r="5" fill="currentColor"/><circle cx="110" cy="17" r="9" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"/></svg>
+    </div>
+    <div class="flex"></div>
     <span id="private-badge" hidden>
-      <svg viewBox="0 0 24 24"><path d="M3 11h18M5 11l2-6h10l2 6M7 18a3 3 0 1 0 0-.01M17 18a3 3 0 1 0 0-.01M10 18h4"/></svg>
-      Privado
+      <svg viewBox="0 0 24 24"><path d="M3 11h18M5 11l2-6h10l2 6M7 18a3 3 0 1 0 0-.01M17 18a3 3 0 1 0 0-.01M10 18h4"/></svg>Privado
     </span>
+    <button id="mode-btn" class="icon-btn nodrag" title="Alternar Modo Órbita / Modo Foco"></button>
+    <div id="winctl" class="nodrag">
+      <button id="w-min" title="Minimizar"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+      <button id="w-max" title="Maximizar"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1"/></svg></button>
+      <button id="w-close" title="Fechar"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ===== tabs ===== -->
+  <div id="tabsrow" class="drag">
+    <div id="tabs" class="nodrag" role="tablist"></div>
+    <button id="newtab" class="icon-btn nodrag" title="Nova aba (Ctrl+T)" aria-label="Nova aba"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <div class="flex"></div>
   </div>
 
+  <!-- ===== toolbar ===== -->
   <div id="toolbar">
-    <button id="back" class="icon-btn" title="Voltar (Alt+←)" aria-label="Voltar" disabled>
-      <svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
-    </button>
-    <button id="forward" class="icon-btn" title="Avançar (Alt+→)" aria-label="Avançar" disabled>
-      <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-    </button>
+    <button id="back" class="icon-btn" title="Voltar (Alt+←)" aria-label="Voltar" disabled><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+    <button id="forward" class="icon-btn" title="Avançar (Alt+→)" aria-label="Avançar" disabled><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
     <button id="reload" class="icon-btn" title="Recarregar (F5)" aria-label="Recarregar">
       <svg class="i-reload" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
       <svg class="i-stop" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
-    <button id="home" class="icon-btn" title="Página inicial (Alt+Home)" aria-label="Página inicial">
-      <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 9.5V20h4.5v-5.5h3V20H18V9.5"/></svg>
-    </button>
-
+    <button id="home" class="icon-btn" title="Página inicial (Alt+Home)" aria-label="Página inicial"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 9.5V20h4.5v-5.5h3V20H18V9.5"/></svg></button>
     <div id="omnibox">
       <span id="site-icon" title="">
         <svg class="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
@@ -44,29 +59,22 @@
       </span>
       <input id="address" type="text" spellcheck="false" autocomplete="off" placeholder="Pesquise ou digite um endereço">
       <span id="zoom-ind" title="Clique para restaurar o zoom" hidden></span>
-      <button id="popups" class="icon-btn small" title="Pop-ups bloqueados" hidden>
-        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 13l6 4M14 13l-6 4"/></svg>
-      </button>
-      <button id="shield" class="icon-btn small" title="Bloqueador de anúncios e rastreadores">
-        <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/></svg>
-        <span id="shield-n"></span>
-      </button>
-      <button id="star" class="icon-btn small" title="Adicionar aos favoritos (Ctrl+D)" aria-label="Favoritar">
-        <svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>
-      </button>
+      <span id="device-ind" title="Visualização de dispositivo — clique para voltar ao computador" hidden></span>
+      <button id="popups" class="icon-btn small" title="Pop-ups bloqueados" hidden><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 13l6 4M14 13l-6 4"/></svg></button>
+      <button id="shield" class="icon-btn small" title="Bloqueador de anúncios e rastreadores"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/></svg><span id="shield-n"></span></button>
+      <button id="star" class="icon-btn small" title="Adicionar aos favoritos (Ctrl+D)" aria-label="Favoritar"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
     </div>
-
+    <button id="readlater" class="icon-btn" title="Ler depois"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z"/><path d="M12 8v4M10 10h4"/></svg></button>
+    <button id="mission-add" class="icon-btn" title="Adicionar página a uma missão"><svg viewBox="0 0 24 24"><path d="M5 21V4h11l-2 4 2 4H5"/></svg></button>
     <button id="downloads" class="icon-btn" title="Downloads (Ctrl+J)" aria-label="Downloads">
       <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
       <svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg>
     </button>
-    <button id="menu" class="icon-btn" title="Menu" aria-label="Menu">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/></svg>
-    </button>
+    <button id="panel-btn" class="icon-btn" title="Mostrar/ocultar painel lateral"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg></button>
+    <button id="menu" class="icon-btn" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/></svg></button>
   </div>
 
   <div id="bookmarksbar"></div>
-
   <div id="findbar" hidden>
     <svg viewBox="0 0 24 24" class="find-ico"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
     <input id="find-input" type="text" placeholder="Localizar na página" spellcheck="false">
@@ -81,9 +89,85 @@
     <button id="infobar-more" class="link">Saiba mais</button>
     <button id="infobar-close" class="icon-btn small" title="Dispensar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
-</header>
 
-<div id="suggest" hidden></div>
+  <!-- ===== main: sidebar · stage · right panel ===== -->
+  <div id="main">
+    <aside id="sidebar">
+      <nav class="side-group">
+        <button class="side-item" data-go="newtab"><span class="ic" data-icon="home"></span><span class="lbl">Início</span></button>
+        <button class="side-item" data-go="universe#spaces"><span class="ic" data-icon="spaces"></span><span class="lbl">Spaces</span></button>
+        <button class="side-item" data-go="universe#orbits"><span class="ic" data-icon="orbit"></span><span class="lbl">Orbits</span><span class="count" id="c-orbits"></span></button>
+        <button class="side-item" data-go="universe#missions"><span class="ic" data-icon="mission"></span><span class="lbl">Missions</span><span class="count" id="c-missions"></span></button>
+      </nav>
+      <div id="side-missions" class="side-sub"></div>
+      <div class="side-sep"></div>
+      <nav class="side-group">
+        <button class="side-item" data-go="bookmarks"><span class="ic" data-icon="star"></span><span class="lbl">Favoritos</span></button>
+        <button class="side-item" data-go="history"><span class="ic" data-icon="clock"></span><span class="lbl">Histórico</span></button>
+        <button class="side-item" data-go="downloads"><span class="ic" data-icon="download"></span><span class="lbl">Downloads</span></button>
+        <button class="side-item" data-go="universe#ler-depois"><span class="ic" data-icon="bookmark"></span><span class="lbl">Ler depois</span><span class="count" id="c-read"></span></button>
+        <button class="side-item" data-go="mapa"><span class="ic" data-icon="map"></span><span class="lbl">Mapa Estelar</span></button>
+      </nav>
+      <div class="flex"></div>
+      <div id="compass" aria-hidden="true">
+        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" fill="none" stroke="currentColor" stroke-width=".8" opacity=".5"/><circle cx="60" cy="60" r="40" fill="none" stroke="currentColor" stroke-width=".8" stroke-dasharray="2 4"/><g class="spin"><path d="M60 14l6 46-6 46-6-46z" fill="currentColor" opacity=".9"/><path d="M14 60l46-5 46 5-46 5z" fill="currentColor" opacity=".35"/></g><circle cx="60" cy="60" r="4" fill="#07070a" stroke="currentColor"/><text x="60" y="10" text-anchor="middle" font-size="8" fill="currentColor">N</text></svg>
+        <div id="compass-txt"></div>
+      </div>
+      <button class="side-item" data-go="settings"><span class="ic" data-icon="gear"></span><span class="lbl">Configurações</span></button>
+    </aside>
+
+    <section id="stage">
+      <div id="hole"></div>
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+      <div id="panes"></div>
+      <div id="device-frame" hidden><span class="notch"></span></div>
+    </section>
+
+    <aside id="rpanel">
+      <div class="card cut">
+        <div class="card-h"><span data-icon="search" class="ic"></span>Busca</div>
+        <form id="rsearch"><input id="rsearch-in" type="text" spellcheck="false" autocomplete="off" placeholder="Pesquisar na web…"></form>
+        <div id="rsearch-eng" class="hint"></div>
+      </div>
+      <div class="card cut">
+        <div class="card-h"><span data-icon="link" class="ic"></span>Links rápidos<button id="links-edit" class="mini" title="Editar links">Editar</button></div>
+        <div id="links"></div>
+      </div>
+      <div class="card cut grow">
+        <div class="card-h"><span data-icon="clock" class="ic"></span>Recentes</div>
+        <div id="recents"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ===== dock ===== -->
+  <footer id="dock">
+    <div class="dock-side left">
+      <button class="dock-btn" id="d-capture" title="Captura da página (salva em Downloads)"><span class="ic" data-icon="camera"></span><span class="lbl">Captura</span></button>
+      <button class="dock-btn" id="d-split" title="Split View — até 4 páginas lado a lado"><span class="ic" data-icon="split"></span><span class="lbl">Dividir</span></button>
+      <button class="dock-btn" id="d-media" title="Mídia tocando nas abas"><span class="ic" data-icon="media"></span><span class="lbl">Mídia</span><i class="dot" hidden></i></button>
+    </div>
+    <button id="orb" title="Central de comandos (Ctrl+K)"><span class="orb-core"></span><span class="orb-ring"></span></button>
+    <div class="dock-side right">
+      <button class="dock-btn" id="d-devices" title="Ver a página como celular ou tablet"><span class="ic" data-icon="devices"></span><span class="lbl">Dispositivos</span></button>
+      <button class="dock-btn" id="d-perf" title="Memória e abas em repouso"><span class="ic" data-icon="perf"></span><span class="lbl">Desempenho</span></button>
+      <button class="dock-btn" id="d-more" title="Mais opções"><span class="ic" data-icon="grid"></span><span class="lbl">Mais</span></button>
+    </div>
+  </footer>
+</div>
+
+<!-- overlays (the frame is put above the pages while one of these is open) -->
+<div id="suggest" class="overlay" hidden></div>
+<div id="pop" class="overlay pop cut" hidden></div>
+<div id="palette-wrap" class="overlay" hidden>
+  <div id="palette" class="cut">
+    <div class="pal-in"><span data-icon="orbit" class="ic"></span><input id="pal-input" type="text" spellcheck="false" autocomplete="off" placeholder="Abas, Spaces, Orbits, Missions, comandos ou pesquisa…"><kbd>Esc</kbd></div>
+    <div id="pal-list"></div>
+  </div>
+</div>
+<div id="prompt-wrap" class="overlay" hidden>
+  <form id="prompt" class="cut"><div id="prompt-t"></div><input id="prompt-in" type="text" spellcheck="false" maxlength="60"><div class="prompt-b"><button type="button" id="prompt-cancel">Cancelar</button><button type="submit" class="primary">OK</button></div></form>
+</div>
 
 <script src="ui.js"></script>
 </body>
