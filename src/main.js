@@ -124,7 +124,7 @@ const DEFAULT_SETTINGS = {
   spaces: null,
   shortcuts: null,
 };
-const BUILD_DATE = '2026-11-21';
+const BUILD_DATE = '2026-11-22';
 let settings, bookmarks, history;
 let orbits = [], missions = [], readLater = [];
 const thumbs = new Map(); // url -> small JPEG data URL of the page (for "Recentes")
@@ -1087,7 +1087,7 @@ class BrowserWin {
       if (!this.isPrivate) updateHistoryMeta(wc.getURL(), { title });
     });
     wc.on('page-favicon-updated', (e, favs) => {
-      t.favicon = favs[0] || ''; this.sendTab(t);
+      t.favicon = favs.find((f) => /^(https?:|data:image\/)/i.test(String(f)) && String(f).length < 200000) || ''; this.sendTab(t);
       if (!this.isPrivate) updateHistoryMeta(wc.getURL(), { favicon: t.favicon });
       const b = bookmarks.find((x) => x.url === wc.getURL());
       if (b && b.favicon !== t.favicon) { b.favicon = t.favicon; save('bookmarks', bookmarks); broadcastBookmarks(); }
@@ -1109,7 +1109,7 @@ class BrowserWin {
           const small = img.resize({ width: 160 });
           thumbs.delete(url); thumbs.set(url, 'data:image/jpeg;base64,' + small.toJPEG(60).toString('base64'));
           while (thumbs.size > 40) thumbs.delete(thumbs.keys().next().value);
-          save('thumbs', Object.fromEntries(thumbs), 3000);
+          // kept in memory only: screenshots of pages (bank, e-mail…) are never written to disk
           broadcastRecents();
         }).catch(() => {});
       }, 1500);
@@ -1477,7 +1477,7 @@ class BrowserWin {
     else if (action === 'go') this.activate(id);
     else if (action === 'toggle') {
       await wc.executeJavaScript(`(() => { const m = [...document.querySelectorAll('video,audio')]; const p = m.filter((x) => !x.paused);
-        if (p.length) { p.forEach((x) => x.pause()); return 'paused'; } const f = m.find((x) => x.currentTime > 0) || m[0]; if (f) { f.play().catch(() => {}); return 'playing'; } return 'none'; })()`, true).catch(() => {});
+        if (p.length) { p.forEach((x) => x.pause()); return 'paused'; } const f = m.find((x) => x.currentTime > 0) || m[0]; if (f) { f.play().catch(() => {}); return 'playing'; } return 'none'; })()`, false).catch(() => {});
     }
     this.sendTab(t);
     return this.mediaList();
@@ -1509,13 +1509,13 @@ class BrowserWin {
 
   /* ---------- read later / missions from the current page */
   addReadLater(t = this.active) {
-    if (!t) return;
+    if (!t || this.isPrivate) return;
     const url = tabUrl(t); if (!isWebUrl(url)) return;
     if (!readLater.some((x) => x.url === url)) { readLater.unshift({ url, title: t.title || url, favicon: t.favicon || '', added: Date.now() }); save('readlater', readLater); }
     broadcastCollections(); this.showNotice('Adicionado a Ler depois', 2000);
   }
   addToMission(missionId, t = this.active) {
-    const m = missions.find((x) => x.id === missionId); if (!m || !t) return;
+    const m = missions.find((x) => x.id === missionId); if (!m || !t || this.isPrivate) return;
     const url = tabUrl(t); if (!isWebUrl(url)) return;
     m.pages = m.pages || [];
     if (!m.pages.some((x) => x.url === url)) m.pages.push({ url, title: t.title || url, favicon: t.favicon || '' });
@@ -1523,6 +1523,7 @@ class BrowserWin {
     this.showNotice(`Página adicionada à missão “${m.title}”`, 2200);
   }
   saveSpaceAsOrbit(spaceId = this.spaceId, name = null) {
+    if (this.isPrivate) return null;
     const tabs = this.spaceTabs(spaceId).map((t) => ({ url: tabUrl(t), title: t.title, favicon: t.favicon })).filter((x) => isWebUrl(x.url));
     if (!tabs.length) { this.showNotice('Não há páginas para salvar nesta Space', 2200); return null; }
     const sp = spaceList().find((x) => x.id === spaceId);
@@ -1596,7 +1597,8 @@ class BrowserWin {
       ['Ler depois', 'cmd', 'read-later', ''], ['Histórico', 'cmd', 'history', 'Ctrl+H'], ['Downloads', 'cmd', 'downloads', 'Ctrl+J'],
       ['Favoritos', 'cmd', 'bookmarks', ''], ['Configurações', 'cmd', 'settings', ''], ['Alternar Modo Foco / Órbita', 'cmd', 'mode', ''],
     ];
-    for (const [title, kind, id, hint] of cmds) if (match(title)) items.push({ kind, id, title, sub: hint, group: 'Comandos' });
+    const privHidden = new Set(['save-orbit', 'read-later']);
+    for (const [title, kind, id, hint] of cmds) if (match(title) && !(this.isPrivate && privHidden.has(id))) items.push({ kind, id, title, sub: hint, group: 'Comandos' });
     if (!this.isPrivate) for (const sp of spaceList()) if (match(sp.name, 'space')) items.push({ kind: 'space', id: sp.id, title: sp.name, sub: `${this.spaceTabs(sp.id).length} aba(s)`, group: 'Spaces', color: sp.color });
     for (const t of this.tabs) if (match(t.title, tabUrl(t))) items.push({ kind: 'tab', id: t.id, title: t.title || tabUrl(t), sub: (spaceList().find((x) => x.id === t.spaceId) || { name: 'Privado' }).name, favicon: t.favicon, group: 'Abas abertas' });
     if (!this.isPrivate) {
@@ -2076,7 +2078,11 @@ internal('antares:history', (e, query, limit = 300, offset = 0) => {
   const o = Math.max(0, offset | 0); const l = Math.min(1000, Math.max(1, limit | 0));
   return { items: list.slice(o, o + l), total: list.length };
 });
-internal('antares:remove-history', (e, time, url) => { history = history.filter((h) => !(h.time === time && h.url === url)); save('history', history); return true; });
+internal('antares:remove-history', (e, time, url) => {
+  history = history.filter((h) => !(h.time === time && h.url === url));
+  if (!history.some((h) => h.url === url)) thumbs.delete(url);
+  save('history', history); broadcastRecents(); return true;
+});
 internal('antares:is-private', (e) => e.sender.session !== session.defaultSession);
 internal('antares:top-sites', (e) => {
   if (e.sender.session !== session.defaultSession) return [];
@@ -2225,7 +2231,12 @@ internal('antares:clear-downloads', (e) => {
 internal('antares:open-downloads-folder', () => shell.openPath(app.getPath('downloads')));
 internal('antares:clear-data', async (e, opts) => {
   const since = opts.range ? Date.now() - opts.range : 0;
-  if (opts.history) { history = since ? history.filter((h) => h.time < since) : []; save('history', history); }
+  if (opts.history) {
+    history = since ? history.filter((h) => h.time < since) : []; save('history', history);
+    const keep = new Set(history.map((h) => h.url));
+    for (const u of [...thumbs.keys()]) if (!keep.has(u)) thumbs.delete(u);
+    broadcastRecents();
+  }
   const ses = session.defaultSession;
   if (opts.cookies) await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage', 'websql', 'filesystem', 'shadercache'] });
   if (opts.cache) await ses.clearCache();
@@ -2367,7 +2378,7 @@ app.whenReady().then(() => {
   history = load('history', []);
   orbits = load('orbits', []); missions = load('missions', []); readLater = load('readlater', []);
   if (!Array.isArray(orbits)) orbits = []; if (!Array.isArray(missions)) missions = []; if (!Array.isArray(readLater)) readLater = [];
-  try { const th = load('thumbs', {}); for (const [k, v] of Object.entries(th || {})) if (typeof v === 'string' && v.startsWith('data:image/jpeg')) thumbs.set(k, v); } catch {}
+  try { fs.rmSync(path.join(app.getPath('userData'), 'thumbs.json'), { force: true }); fs.rmSync(path.join(app.getPath('userData'), 'thumbs.json.bak'), { force: true }); } catch {}
   // from Aurora 1.x
   if (typeof settings.homepage === 'string' && /^aurora:/i.test(settings.homepage)) settings.homepage = settings.homepage.replace(/^aurora:/i, 'antares:');
   if (!['auto', 'orbit', 'focus'].includes(settings.layoutMode)) settings.layoutMode = 'auto';

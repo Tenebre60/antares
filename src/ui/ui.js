@@ -551,7 +551,10 @@ function renderPanes() {
     const h = document.createElement('div');
     h.className = 'pane-head' + (p.id === state.activeId ? ' active' : '');
     Object.assign(h.style, { left: p.head.x + 'px', top: p.head.y + 'px', width: p.head.width + 'px', height: p.head.height + 'px' });
-    h.innerHTML = `${t.favicon ? `<img src="${esc(t.favicon)}" alt="">` : ICONS.globe}<span class="t">${esc(t.title || t.display || 'Nova aba')}</span>
+    // the real address of every pane is always visible (titles are chosen by the site and could imitate another one)
+    let where = ''; try { const u = new URL(t.url); where = u.protocol === 'antares:' ? 'Antares' : u.host; } catch {}
+    const lock = t.secure === 'insecure' ? `<span class="ph-warn" title="Conexão não segura">Não seguro</span>` : '';
+    h.innerHTML = `${t.favicon ? `<img src="${esc(t.favicon)}" alt="">` : ICONS.globe}${lock}<span class="ph-host">${esc(where)}</span><span class="t">${esc(t.title || t.display || 'Nova aba')}</span>
       <button data-a="max" title="Mostrar só esta página">${ICONS.max}</button><button data-a="close" title="Tirar do Split View">${ICONS.close}</button>`;
     const img = h.querySelector('img'); if (img) img.onerror = () => img.remove();
     h.onmousedown = (e) => { if (!e.target.closest('button')) api.split('focus', p.id); };

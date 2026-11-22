@@ -340,3 +340,6 @@ body.fullscreen #app, body.fullscreen #bg { display: none; }
 #device-frame.tablet { border-radius: 22px; }
 #device-frame .notch { position: absolute; left: 50%; top: 5px; width: 60px; height: 5px; border-radius: 3px; background: #2a2420; transform: translateX(-50%); }
 body.on-top #device-frame { opacity: .4; }
+.pane-head .ph-host { font-weight: 700; color: var(--text); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.pane-head .ph-warn { color: var(--danger); font-weight: 700; font-size: 11px; flex: none; }
+.pane-head .t { opacity: .7; }
