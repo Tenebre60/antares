@@ -49,6 +49,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Marcar a versão (tag)
+        shell: bash
+        run: |
+          V="v${{ needs.verificar.outputs.version }}"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then
+            git tag "$V" && git push origin "$V"
+          fi
       - name: Montar e publicar o instalador
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
