@@ -28,7 +28,9 @@ jobs:
         run: |
           V=$(node -p "require('./package.json').version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          if gh release view "v$V" >/dev/null 2>&1; then echo "publish=false" >> "$GITHUB_OUTPUT"; echo "A versão $V já foi publicada."; else echo "publish=true" >> "$GITHUB_OUTPUT"; fi
+          # a version counts as published only if it is public and has latest.yml (what the browsers read)
+          INFO=$(gh release view "v$V" --json isDraft,assets --jq '[.isDraft, ([.assets[].name] | index("latest.yml") != null)] | @tsv' 2>/dev/null || true)
+          if [ "$INFO" = "$(printf 'false\ttrue')" ]; then echo "publish=false" >> "$GITHUB_OUTPUT"; echo "A versão $V já foi publicada."; else echo "publish=true" >> "$GITHUB_OUTPUT"; fi
   testes:
     needs: verificar
     if: needs.verificar.outputs.publish == 'true'
@@ -51,8 +53,12 @@ jobs:
       - run: npm ci
       - name: Marcar a versão (tag)
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V="v${{ needs.verificar.outputs.version }}"
+          # an incomplete release of this version (without latest.yml) is removed and made again
+          if gh release view "$V" >/dev/null 2>&1; then gh release delete "$V" --yes; fi
           if ! git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then
             git tag "$V" && git push origin "$V"
           fi
@@ -60,6 +66,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/build-win.js --publish
+      - name: Tornar a versão pública (só depois de enviar todos os arquivos)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="v${{ needs.verificar.outputs.version }}"
+          gh release view "$V" --json assets --jq '.assets[].name' | tee assets.txt
+          grep -qx latest.yml assets.txt
+          grep -q "Antares-Setup-.*\.exe$" assets.txt
+          gh release edit "$V" --draft=false --latest
       - name: Conferir proteções do executável
         shell: bash
         run: |

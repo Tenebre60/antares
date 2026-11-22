@@ -80,7 +80,7 @@
         "provider": "github",
         "owner": "Tenebre60",
         "repo": "antares",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ]
   },
