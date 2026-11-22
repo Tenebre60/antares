@@ -344,3 +344,103 @@ body.on-top #device-frame { opacity: .4; }
 .pane-head .t { opacity: .7; }
 #infobar.good { border-color: #3ad29f; color: #3ad29f; }
 #infobar.good #infobar-more { color: #3ad29f; font-weight: 600; }
+
+/* =====================================================================
+   MODO ÓRBITA — the window floats on the desktop as a light octagonal
+   frame with panels around it (compass, radar emblem, orb). Modo Foco
+   (maximized) keeps the dark, compact frame above.
+   ===================================================================== */
+#orbit-deco, #pod-orb, #dock-word { display: none; }
+body.mode-orbit { --T: 60px; --L: 74px; --R: 26px; --B: 58px; }
+body.mode-orbit #orbit-deco { display: block; }
+body.mode-orbit #pod-orb, body.mode-orbit #dock-word { display: block; }
+.drag-strip { position: fixed; -webkit-app-region: drag; z-index: 0; }
+#drag-t { left: 0; right: 0; top: 0; height: var(--T); }
+#drag-b { left: 0; right: 0; bottom: 0; height: var(--B); }
+#drag-l { left: 0; top: 0; bottom: 0; width: var(--L); }
+#drag-r { right: 0; top: 0; bottom: 0; width: var(--R); }
+#nebula { position: fixed; z-index: 0; width: 78vmax; height: 78vmax; right: -24vmax; top: -30vmax; opacity: .5; filter: blur(3px) saturate(1.25); pointer-events: none; }
+body.private #nebula { filter: blur(3px) hue-rotate(235deg) saturate(.8); }
+#shell-wrap { position: fixed; z-index: 0; top: var(--T); right: var(--R); bottom: var(--B); left: var(--L); pointer-events: none;
+  filter: drop-shadow(0 0 1px rgba(255, 150, 70, .9)) drop-shadow(0 10px 40px rgba(255, 110, 20, .35)); }
+#shell { position: absolute; inset: 0; background: linear-gradient(160deg, #f7f3ec, #ece5da 60%, #e4dccf);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .8); }
+body.private #shell { background: linear-gradient(160deg, #f4f2fa, #e6e2f0 60%, #dcd6ea); }
+#pod-emblem { position: fixed; z-index: 2; top: 0; left: 50%; transform: translateX(-50%); width: 250px; height: 60px; color: var(--accent);
+  background: linear-gradient(180deg, #17110e, #0b0908); clip-path: polygon(0 0, 100% 0, 88% 100%, 12% 100%);
+  display: grid; place-items: center; box-shadow: inset 0 -2px 0 var(--accent); }
+#pod-emblem svg { width: 120px; height: 54px; stroke: none; }
+#pod-emblem .sweep { transform-origin: 40px 40px; animation: spin 6s linear infinite; }
+#pod-compass { position: fixed; z-index: 2; left: 10px; top: 50%; transform: translateY(-50%); width: 82px; padding: 22px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; color: #f4ece2; text-align: center;
+  background: linear-gradient(180deg, #17110e, #0b0908); clip-path: polygon(30% 0, 100% 0, 100% 100%, 30% 100%, 0 82%, 0 18%);
+  box-shadow: inset -2px 0 0 var(--accent); pointer-events: none; }
+#pod-compass .n { color: var(--accent); font-weight: 700; font-size: 13px; }
+#pod-compass b { font-size: 19px; font-weight: 600; letter-spacing: .02em; }
+#pod-compass small { font-size: 10.5px; color: #a8988a; letter-spacing: .08em; }
+#pod-orb { position: fixed; z-index: 3; top: 6px; right: calc(var(--R) + 20px); width: 46px; height: 46px; padding: 0; border-radius: 50%;
+  border: 2px solid #e8dfd2; background: #0e0b0a; box-shadow: 0 0 18px rgba(255, 122, 26, .55); cursor: pointer; }
+#pod-orb img { width: 100%; height: 100%; border-radius: 50%; animation: spin 50s linear infinite; }
+body.private #pod-orb img { filter: hue-rotate(235deg); }
+
+/* the frame itself */
+body.mode-orbit #app { top: var(--T); right: var(--R); bottom: var(--B); left: var(--L); padding: 6px 16px 0 22px;
+  grid-template-rows: 44px 38px 48px auto auto auto 1fr 76px;
+  --text: #1f1813; --muted: #6f6257; --dim: #a09184; --hover: rgba(140, 80, 30, .08); --press: rgba(140, 80, 30, .15);
+  --field: #ffffff; --field-focus: #ffffff; --line: rgba(140, 90, 50, .2); --line2: rgba(255, 122, 26, .6); --glass: transparent; color: var(--text); }
+body.mode-orbit #emblem, body.mode-orbit .corner, body.mode-orbit #stage::before, body.mode-orbit #compass { display: none; }
+body.mode-orbit #top { padding-left: 34px; gap: 8px; }
+body.mode-orbit #brand .word { color: #1f1813; }
+body.mode-orbit #winctl button { color: #6f6257; width: 40px; }
+body.mode-orbit #winctl { margin-right: 52px; }
+body.mode-orbit .space { color: #5d5148; font-weight: 600; }
+body.mode-orbit .space.active { background: #fff; color: #1f1813; border-color: rgba(140, 90, 50, .18); box-shadow: 0 1px 3px rgba(80, 40, 10, .12); }
+body.mode-orbit #tabsrow { padding: 0 6px; }
+body.mode-orbit .tab { background: rgba(255, 255, 255, .55); border-color: rgba(140, 90, 50, .14); color: #5d5148; }
+body.mode-orbit .tab:hover { background: rgba(255, 255, 255, .85); }
+body.mode-orbit .tab.active { background: #fff; color: #1f1813; font-weight: 600; border-color: rgba(140, 90, 50, .2); }
+body.mode-orbit #toolbar { margin: 0 6px; background: transparent; border: 0; clip-path: none; padding: 0; }
+body.mode-orbit #omnibox { background: #fff; border-color: rgba(140, 90, 50, .18); box-shadow: 0 1px 2px rgba(80, 40, 10, .08); }
+body.mode-orbit #omnibox.focused { background: #fff; border-color: var(--accent); }
+body.mode-orbit #bookmarksbar { padding: 0 12px; }
+body.mode-orbit #findbar, body.mode-orbit #infobar { background: #fff; color: var(--text); }
+body.mode-orbit #main { grid-template-columns: 192px 1fr 252px; padding-top: 8px; }
+body.mode-orbit.no-panel #main { grid-template-columns: 192px 1fr 0; }
+/* dark side panel, like the reference design */
+body.mode-orbit #sidebar { margin: 0 10px 12px 0; padding: 10px 8px; border-radius: 18px; background: linear-gradient(180deg, #14100e, #0b0908);
+  box-shadow: 0 6px 20px rgba(60, 25, 5, .25);
+  --text: #f4ece2; --muted: #b9aa9c; --dim: #7d6f63; --hover: rgba(255, 170, 110, .1); --press: rgba(255, 170, 110, .18); color: var(--text); }
+body.mode-orbit .side-item.active { background: linear-gradient(90deg, rgba(255, 122, 26, .38), rgba(255, 122, 26, .1)); }
+body.mode-orbit #hole { inset: 0 4px 12px 4px; }
+body.mode-orbit #hole-fill { border-radius: 16px; background: #0b0a0c; }
+/* right panel: one light card with the sections inside */
+body.mode-orbit #rpanel { margin: 0 0 12px 6px; padding: 6px 4px; border-radius: 18px; background: rgba(255, 255, 255, .78); gap: 4px;
+  box-shadow: 0 4px 16px rgba(80, 40, 10, .12); }
+body.mode-orbit .card { background: transparent; clip-path: none; padding: 8px 12px; }
+body.mode-orbit .card-h { color: #3a2d23; }
+/* dock: round buttons and the big orb that leaves the frame */
+body.mode-orbit #dock { gap: 14px; padding: 0 0 6px; align-items: flex-end; }
+body.mode-orbit #dock::before { display: none; }
+body.mode-orbit .dock-side { margin: 0 0 4px; gap: 10px; }
+body.mode-orbit .dock-btn { width: 72px; height: 64px; gap: 5px; color: #2c221b; justify-content: flex-end; }
+body.mode-orbit .dock-btn:hover { background: transparent; }
+body.mode-orbit .dock-btn .ic { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: #fff;
+  border: 1.5px solid #ddd2c4; box-shadow: 0 2px 6px rgba(80, 40, 10, .1); transition: border-color .15s, transform .15s; }
+body.mode-orbit .dock-btn:hover .ic { border-color: var(--accent); transform: translateY(-2px); }
+body.mode-orbit .dock-btn.on .ic { border-color: var(--accent); color: var(--accent); }
+body.mode-orbit .dock-btn .lbl { font-size: 11.5px; font-weight: 600; }
+body.mode-orbit .dock-btn .dot { top: 0; right: 14px; }
+body.mode-orbit #orb { width: 104px; height: 104px; margin: 0 18px -46px; border-radius: 50%; background: radial-gradient(circle, #1a110c, #070505 70%);
+  border: 3px solid #eee6da; box-shadow: 0 0 0 6px rgba(255, 255, 255, .35), 0 0 34px rgba(255, 122, 26, .6); }
+body.mode-orbit #orb .orb-core { inset: 10px; }
+body.mode-orbit #orb .orb-ring { inset: -10px; border-color: rgba(255, 140, 60, .5); border-left-color: transparent; border-right-color: transparent; }
+body.mode-orbit #dock-word { position: absolute; left: 50%; bottom: -54px; transform: translateX(-50%); font-size: 10px; font-weight: 700;
+  letter-spacing: .4em; padding-left: .4em; color: #e8dccd; pointer-events: none; }
+@media (max-width: 1150px) { body.mode-orbit #main { grid-template-columns: 192px 1fr 0; } body.mode-orbit #rpanel { display: none; } }
+@media (max-width: 920px) {
+  body.mode-orbit #main { grid-template-columns: 62px 1fr 0; }
+  body.mode-orbit .side-item .lbl, body.mode-orbit .side-item .count, body.mode-orbit .side-sub { display: none; }
+  body.mode-orbit .side-item { justify-content: center; padding: 0; }
+  body.mode-orbit #pod-emblem { display: none; }
+}
+@media (max-height: 640px) { body.mode-orbit #pod-compass { display: none; } }

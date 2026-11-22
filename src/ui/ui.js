@@ -92,12 +92,23 @@ function reportLayout() {
   document.body.classList.toggle('on-top', onTop);
   // background everywhere except the hole (so pages show through when the frame is on top)
   const { x, y, width: w, height: h } = rect;
-  $('#bg').style.clipPath = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${x}px ${y}px, ${x}px ${y + h}px, ${x + w}px ${y + h}px, ${x + w}px ${y}px, ${x}px ${y}px)`;
+  const holePts = `${x}px ${y}px, ${x}px ${y + h}px, ${x + w}px ${y + h}px, ${x + w}px ${y}px, ${x}px ${y}px`;
+  $('#bg').style.clipPath = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${holePts})`;
+  // the light Órbita shell: an octagon with the same hole
+  const sh = $('#shell'); const sr = sh.getBoundingClientRect();
+  if (sr.width) {
+    const c = Math.min(46, sr.width / 6, sr.height / 6); const W = sr.width, H = sr.height; const ox = sr.left, oy = sr.top;
+    // octagon with a rounded hole where the page sits (the page itself has rounded corners)
+    const oct = `M${c} 0H${W - c}L${W} ${c}V${H - c}L${W - c} ${H}H${c}L0 ${H - c}V${c}Z`;
+    const hx = x - ox, hy = y - oy, r = Math.min(16, w / 2, h / 2);
+    const hole = w > 0 && h > 0 ? `M${hx + r} ${hy}H${hx + w - r}A${r} ${r} 0 0 1 ${hx + w} ${hy + r}V${hy + h - r}A${r} ${r} 0 0 1 ${hx + w - r} ${hy + h}H${hx + r}A${r} ${r} 0 0 1 ${hx} ${hy + h - r}V${hy + r}A${r} ${r} 0 0 1 ${hx + r} ${hy}Z` : '';
+    sh.style.clipPath = `path(evenodd, '${oct}${hole}')`;
+  }
   Object.assign($('#hole-fill').style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
-  const key = JSON.stringify([rect, onTop]);
+  const key = JSON.stringify([rect, onTop, document.body.className.includes('mode-orbit')]);
   if (key === lastLayout) return;
   lastLayout = key;
-  api.layout(rect, onTop);
+  api.layout(rect, onTop, document.body.classList.contains('mode-orbit') ? 16 : 0);
 }
 new ResizeObserver(() => reportLayout()).observe(hole);
 window.addEventListener('resize', () => { applyMode(); drawStars(); fitTabs(); renderBookmarks(); closePop(); if (!suggestEl.hidden) positionSuggest(); reportLayout(); });
@@ -106,7 +117,8 @@ window.addEventListener('resize', () => { applyMode(); drawStars(); fitTabs(); r
 function currentMode() {
   const m = state.settings.layoutMode;
   if (m === 'orbit' || m === 'focus') return m;
-  return innerWidth >= 1180 ? 'orbit' : 'focus';
+  // Modo Órbita while the window floats on the desktop; Modo Foco when it is maximized
+  return state.maximized ? 'focus' : 'orbit';
 }
 function applyMode() {
   const m = currentMode();
@@ -121,6 +133,7 @@ function applyMode() {
 }
 function toggleMode() { api.setSetting('layoutMode', currentMode() === 'orbit' ? 'focus' : 'orbit'); }
 $('#mode-btn').onclick = toggleMode;
+$('#pod-orb').onclick = toggleMode;
 $('#panel-btn').onclick = () => api.setSetting('rightPanel', state.settings.rightPanel === false);
 
 /* ============================================================ window controls */
@@ -160,6 +173,7 @@ function renderSpaces() {
     box.appendChild(add);
   }
   $('#compass-txt').textContent = (state.spaces.find((x) => x.id === state.space) || {}).name || '';
+  tickPod();
 }
 
 /* ============================================================ tabs */
@@ -772,11 +786,18 @@ api.on('find-result', (r) => {
   findInput.classList.toggle('nomatch', !!findInput.value && !r.total);
 });
 api.on('fullscreen', (on) => { document.body.classList.toggle('fullscreen', !!on); });
-api.on('win-state', (s) => { state.maximized = !!s.maximized; renderWinState(); });
+api.on('win-state', (s) => { state.maximized = !!(s.maximized || s.fullscreen); renderWinState(); applyMode(); });
 api.on('win-focus', (f) => document.body.classList.toggle('win-blur', !f));
 api.on('palette', () => openPalette());
 api.on('toggle-mode', toggleMode);
 api.on('space-rename', (id) => { const sp = state.spaces.find((x) => x.id === id); if (sp) ask('Novo nome da Space', sp.name, (v) => api.space('rename', id, v)); });
 
 if (new URLSearchParams(location.search).get('private') === '1') document.body.classList.add('private');
+function tickPod() {
+  const d = new Date();
+  $('#pod-time').textContent = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  $('#pod-date').textContent = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
+  $('#pod-space').textContent = ((state.spaces.find((x) => x.id === state.space) || {}).name || '').toUpperCase();
+}
+setInterval(tickPod, 15000); tickPod();
 applyMode(); drawStars(); reportLayout();

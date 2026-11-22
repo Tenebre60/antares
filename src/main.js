@@ -847,8 +847,13 @@ class BrowserWin {
   get active() { return this.tabs.find((t) => t.id === this.activeId) || null; }
   send(ch, ...a) { const wc = this.ui.webContents; if (!wc.isDestroyed()) wc.send(ch, ...a); }
 
+  roundPages(views) {
+    const r = this.htmlFull ? 0 : (this.radius || 0);
+    for (const v of views) { try { if (typeof v.setBorderRadius === 'function' && v._radius !== r) { v.setBorderRadius(r); v._radius = r; } } catch {} }
+  }
   layout() {
     if (this.win.isDestroyed()) return;
+    this.roundPages(this.tabs.filter((t) => this.alive(t)).map((t) => t.view));
     const [w, h] = this.win.getContentSize();
     const a = this.active;
     if (this.htmlFull) {
@@ -1934,8 +1939,9 @@ uiOn('ui:update-action', (w) => {
   else w.openInternal('settings#seguranca');
 });
 uiOn('ui:mute', (w, id) => { const t = w.tabs.find((x) => x.id === id); if (t) { t.view.webContents.setAudioMuted(!t.view.webContents.isAudioMuted()); w.sendTab(t); } });
-uiOn('ui:layout', (w, rect, onTop) => {
+uiOn('ui:layout', (w, rect, onTop, radius) => {
   const [W, H] = w.win.getContentSize();
+  w.radius = Math.max(0, Math.min(24, Number(radius) || 0));
   const num = (v, max) => Math.max(0, Math.min(max, Math.round(Number(v) || 0)));
   if (rect) w.content = { x: num(rect.x, W), y: num(rect.y, H), width: num(rect.width, W), height: num(rect.height, H) };
   const top = !!onTop;

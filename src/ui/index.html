@@ -10,6 +10,17 @@
 <div id="bg"><canvas id="stars"></canvas><div class="glow"></div></div>
 <div id="hole-fill"></div>
 
+<!-- Modo Órbita: the window is a floating frame with panels around it -->
+<div id="orbit-deco" aria-hidden="true">
+  <div class="drag-strip" id="drag-t"></div><div class="drag-strip" id="drag-l"></div><div class="drag-strip" id="drag-r"></div><div class="drag-strip" id="drag-b"></div>
+  <img id="nebula" src="logo.png" alt="">
+  <div id="shell-wrap"><div id="shell"></div></div>
+  <div id="pod-emblem" class="drag"><svg viewBox="0 0 120 80"><circle cx="40" cy="40" r="26" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="40" cy="40" r="15" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3"/><path d="M40 8v64M8 40h64" stroke="currentColor" stroke-width=".7" opacity=".7"/><g class="sweep"><path d="M40 40L40 14A26 26 0 0 1 62 28z" fill="currentColor" opacity=".25"/></g><circle cx="40" cy="40" r="4" fill="currentColor"/><circle cx="52" cy="30" r="2" fill="currentColor"/><text x="74" y="30" font-size="6.5" fill="currentColor">EXPLORAR</text><text x="74" y="40" font-size="6.5" fill="currentColor">ORGANIZAR</text><text x="74" y="50" font-size="6.5" fill="currentColor">PRODUZIR</text></svg></div>
+  <div id="pod-compass"><span class="n">N</span><b id="pod-time">--:--</b><small id="pod-date"></small><small id="pod-space"></small></div>
+</div>
+<button id="pod-orb" title="Alternar Modo Órbita / Modo Foco"><img src="logo.png" alt=""></button>
+
+
 <div id="app">
   <!-- ===== top bar: brand · spaces · emblem · window controls ===== -->
   <header id="top" class="drag">
@@ -142,6 +153,7 @@
 
   <!-- ===== dock ===== -->
   <footer id="dock">
+    <span id="dock-word">ANTARES</span>
     <div class="dock-side left">
       <button class="dock-btn" id="d-capture" title="Captura da página (salva em Downloads)"><span class="ic" data-icon="camera"></span><span class="lbl">Captura</span></button>
       <button class="dock-btn" id="d-split" title="Split View — até 4 páginas lado a lado"><span class="ic" data-icon="split"></span><span class="lbl">Dividir</span></button>
