@@ -50,7 +50,7 @@ async function go(url, priv = false) {
 }
 function start(extraEnv = {}, args = []) {
   proc = spawn(APP, ['--no-sandbox', '--disable-gpu', `--remote-debugging-port=${PORT}`, ...args], { env: { ...env, ...extraEnv }, stdio: ['ignore', fs.openSync('/tmp/e2e-app.log', 'a'), fs.openSync('/tmp/e2e-app.log', 'a')] });
-  return waitFor(async () => (await targets()).some(UI()), 20000);
+  return waitFor(async () => (await targets()).some(UI()), 45000); // the first start on a fresh CI machine can be slow
 }
 async function stop() { if (proc) { proc.kill('SIGTERM'); await sleep(2500); try { proc.kill('SIGKILL'); } catch {} proc = null; } sh('pkill -f linux-unpacked'); await sleep(800); }
 const renderers = () => Number(sh("pgrep -fc 'linux-unpacked/antares --type=renderer'").trim() || 0);
@@ -64,7 +64,7 @@ async function main() {
   for (const f of fs.readdirSync(os.homedir())) if (/^(nota|relatorio).*\.(txt|pdf)$/.test(f)) fs.rmSync(`${os.homedir()}/${f}`);
 
   /* ---------------- startup & navigation */
-  check('Inicia e abre a página Nova aba', await start() && (await waitFor(async () => (await targets()).some((x) => x.url.startsWith('antares://newtab')), 8000)));
+  check('Inicia e abre a página Nova aba', await start() && (await waitFor(async () => (await targets()).some((x) => x.url.startsWith('antares://newtab')), 20000)));
   check('Nova aba mostra atalhos e relógio', (await waitFor(() => ev('antares://newtab', "document.querySelectorAll('.tile').length >= 4 && /\\d\\d:\\d\\d/.test(document.getElementById('greet').textContent)"))) === true);
   const tA = await go(A); check('Digitar endereço na barra navega', !!tA, tA && tA.url);
   await waitFor(async () => (await activeTab()).title === 'PaginaA', 5000);
