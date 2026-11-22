@@ -171,14 +171,19 @@ async function main() {
   check('Janela privada fecha', !!(await waitFor(async () => !(await targets()).some(UI(true)), 8000)));
 
   /* ---------------- crash recovery */
-  const CR = A + '?travar=1'; // unique address, so the tab on screen is the one that crashes
-  await go(CR);
-  await waitFor(async () => { const t = await activeTab(); return t.url === CR && !t.loading; }, 8000); await sleep(400);
-  await cdp((x) => x.type === 'page' && x.url === CR, 'Page.crash').catch(() => {});
-  const crashed = await waitFor(async () => { const t = await activeTab(); return t.url.startsWith('antares://error') && t; }, 8000);
-  check('Página que trava mostra aviso de erro', !!crashed, crashed ? '' : JSON.stringify({ tab: await activeTab().catch(() => null), targets: (await targets()).map((x) => x.type + ' ' + x.url) }).slice(0, 600));
-  focusMain(); await go(B);
-  check('Aba continua utilizável após travamento', (await activeTab()).url === B);
+  // GitHub's Linux machines do not let a test crash the page process on purpose (it hangs instead of
+  // exiting), so this part runs only on the local test machine.
+  if (process.env.CI) console.log('PULADO  Travamento de página (simulação não funciona no GitHub Actions)');
+  else {
+    const CR = A + '?travar=1'; // unique address, so the tab on screen is the one that crashes
+    await go(CR);
+    await waitFor(async () => { const t = await activeTab(); return t.url === CR && !t.loading; }, 8000); await sleep(400);
+    await cdp((x) => x.type === 'page' && x.url === CR, 'Page.crash').catch(() => {});
+    const crashed = await waitFor(async () => { const t = await activeTab(); return t.url.startsWith('antares://error') && t; }, 8000);
+    check('Página que trava mostra aviso de erro', !!crashed, crashed ? '' : JSON.stringify({ tab: await activeTab().catch(() => null), targets: (await targets()).map((x) => x.type + ' ' + x.url) }).slice(0, 600));
+    focusMain(); await go(B);
+    check('Aba continua utilizável após travamento', (await activeTab()).url === B);
+  }
 
   const log = fs.readFileSync('/tmp/e2e-app.log', 'utf8');
   const errs = log.split('\n').filter((l) => /uncaught|unhandled/i.test(l));
