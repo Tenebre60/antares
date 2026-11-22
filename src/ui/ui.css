@@ -43,7 +43,8 @@ body.win-blur #bg .glow { opacity: .55; }
 /* ---------- top bar ---------- */
 #top { display: flex; align-items: center; gap: 10px; padding: 0 0 0 14px; min-width: 0; }
 #brand { display: flex; align-items: center; gap: 8px; flex: none; cursor: default; }
-#brand .logo { width: 28px; height: 28px; stroke: none; filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), .6)); }
+#brand .logo { width: 30px; height: 30px; filter: drop-shadow(0 0 8px rgba(255, 122, 26, .7)); animation: spin 90s linear infinite; }
+body.private #brand .logo, body.private #orb .orb-core { filter: hue-rotate(235deg) saturate(.8) drop-shadow(0 0 8px rgba(var(--accent-rgb), .7)); }
 #brand .word { font-size: 14px; font-weight: 700; letter-spacing: .32em; color: var(--text); }
 #spaces { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; margin-left: 12px; }
 .space { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; border: 1px solid transparent; border-radius: 14px;
@@ -245,10 +246,8 @@ body.no-panel #rpanel { display: none; }
 .dock-btn .lbl { font-size: 11px; }
 .dock-btn .dot { position: absolute; top: 6px; right: 24px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
 #orb { position: relative; z-index: 2; width: 66px; height: 66px; border: 0; border-radius: 50%; background: transparent; padding: 0; margin: 0 6px; cursor: pointer; }
-#orb .orb-core { position: absolute; inset: 9px; border-radius: 50%;
-  background: radial-gradient(circle at 42% 38%, #fff6dc, #ffc062 22%, var(--accent) 55%, #7a2400 100%);
-  box-shadow: 0 0 22px rgba(var(--accent-rgb), .85), 0 0 60px rgba(var(--accent-rgb), .45); transition: transform .2s; }
-body.private #orb .orb-core { background: radial-gradient(circle at 42% 38%, #fff, #d9c9ff 25%, var(--accent) 60%, #3a2378 100%); }
+#orb .orb-core { position: absolute; inset: 4px; border-radius: 50%; background: url(logo.png) center / contain no-repeat;
+  filter: drop-shadow(0 0 12px rgba(255, 122, 26, .85)) drop-shadow(0 0 30px rgba(255, 122, 26, .4)); transition: transform .2s; animation: spin 60s linear infinite; }
 #orb .orb-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(var(--accent-rgb), .55); border-left-color: transparent; border-right-color: transparent; animation: spin 9s linear infinite; }
 #orb:hover .orb-core { transform: scale(1.08); }
 
@@ -265,7 +264,7 @@ body.mode-focus .dock-btn { width: 42px; height: 34px; }
 body.mode-focus .dock-btn .lbl { display: none; }
 body.mode-focus .dock-btn .dot { right: 6px; top: 4px; }
 body.mode-focus #orb { width: 44px; height: 44px; }
-body.mode-focus #orb .orb-core { inset: 7px; }
+body.mode-focus #orb .orb-core { inset: 3px; }
 body.mode-focus #brand .word { display: none; }
 body.mode-focus #panel-btn { display: none; }
 

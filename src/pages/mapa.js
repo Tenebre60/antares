@@ -60,7 +60,8 @@ async function render() {
   // central star (Antares)
   el('circle', { r: 46, fill: '#ff7a1a', opacity: 0.1, filter: 'url(#glow2)' });
   const sun = node(0, 0, 22, 'url(#sunG)', { title: 'Antares', sub: `${d.tabs.length} aba(s) abertas em ${d.spaces.length} Space(s)`, label: 'ANTARES', labelClass: 'space-label', glow: false });
-  sun.querySelector('text').setAttribute('y', 44);
+  sun.querySelector('text').setAttribute('y', 50);
+  { const c = sun.querySelector('circle.core'); c.setAttribute('opacity', '0'); el('image', { href: 'logo.png', x: -34, y: -34, width: 68, height: 68 }, sun); }
   // constellations: one per space
   const spaces = d.spaces;
   const pos = new Map();

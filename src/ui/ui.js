@@ -165,7 +165,7 @@ function renderSpaces() {
 /* ============================================================ tabs */
 function faviconHtml(t) {
   if (t.loading) return '<div class="spinner"></div>';
-  if (t.url && t.url.startsWith('antares://')) return ICONS.antares;
+  if (t.url && t.url.startsWith('antares://')) return '<img src="logo.png" alt="">';
   if (t.favicon) return `<img src="${esc(t.favicon)}" alt="">`;
   return ICONS.globe;
 }

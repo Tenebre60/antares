@@ -17,47 +17,9 @@ function drawSpace() {
   for (const k of [0.5, 0.7, 0.9]) { g.beginPath(); g.ellipse(w / 2, h * 1.1, w * k, h * k * 0.5, 0, Math.PI, 2 * Math.PI); g.stroke(); }
   g.globalAlpha = 1;
 }
-const sun = $('#sun'); const sg = sun.getContext('2d');
 let priv = false;
-function drawSun(t) {
-  const W = sun.width, c = W / 2, r = W * 0.2;
-  sg.clearRect(0, 0, W, W);
-  const hue = priv ? [169, 139, 255] : [255, 122, 26];
-  // corona
-  const cor = sg.createRadialGradient(c, c, r * 0.6, c, c, r * 2.4);
-  cor.addColorStop(0, `rgba(${hue},.55)`); cor.addColorStop(0.4, `rgba(${hue},.14)`); cor.addColorStop(1, `rgba(${hue},0)`);
-  sg.fillStyle = cor; sg.beginPath(); sg.arc(c, c, r * 2.4, 0, 7); sg.fill();
-  // rays
-  sg.save(); sg.translate(c, c); sg.rotate(t / 9000);
-  for (let i = 0; i < 24; i++) {
-    sg.rotate((Math.PI * 2) / 24);
-    const len = r * (1.35 + 0.25 * Math.sin(t / 700 + i * 1.7));
-    const gr = sg.createLinearGradient(0, r, 0, len);
-    gr.addColorStop(0, `rgba(${hue},.45)`); gr.addColorStop(1, `rgba(${hue},0)`);
-    sg.fillStyle = gr; sg.beginPath(); sg.moveTo(-r * 0.06, r * 0.95); sg.lineTo(0, len); sg.lineTo(r * 0.06, r * 0.95); sg.fill();
-  }
-  sg.restore();
-  // body
-  const body = sg.createRadialGradient(c - r * 0.3, c - r * 0.35, r * 0.1, c, c, r);
-  if (priv) { body.addColorStop(0, '#ffffff'); body.addColorStop(0.4, '#d9c9ff'); body.addColorStop(0.85, '#8b6cf0'); body.addColorStop(1, '#3a2378'); }
-  else { body.addColorStop(0, '#fff6dc'); body.addColorStop(0.3, '#ffc062'); body.addColorStop(0.75, '#ff7a1a'); body.addColorStop(1, '#8a2a00'); }
-  sg.fillStyle = body; sg.beginPath(); sg.arc(c, c, r, 0, 7); sg.fill();
-  // orbit ring + small planet
-  sg.save(); sg.translate(c, c); sg.rotate(-0.42);
-  sg.strokeStyle = `rgba(${hue},.7)`; sg.lineWidth = 1.4;
-  sg.beginPath(); sg.ellipse(0, 0, r * 2.1, r * 0.62, 0, 0, Math.PI * 2); sg.stroke();
-  const a = t / 2600;
-  const px = Math.cos(a) * r * 2.1, py = Math.sin(a) * r * 0.62;
-  if (Math.sin(a) > 0 || Math.hypot(px, py) > r) { sg.fillStyle = '#ffe2bd'; sg.beginPath(); sg.arc(px, py, 4, 0, 7); sg.fill(); }
-  sg.restore();
-}
-let raf = 0;
-function loop(t) { drawSun(t); raf = requestAnimationFrame(loop); }
-const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-function startAnim() { cancelAnimationFrame(raf); if (reduce) drawSun(0); else raf = requestAnimationFrame(loop); }
-document.addEventListener('visibilitychange', () => { if (document.hidden) cancelAnimationFrame(raf); else startAnim(); });
 addEventListener('resize', drawSpace);
-drawSpace(); startAnim();
+drawSpace();
 
 /* ---------------------------------------------------------------- clock / greeting */
 function tick() {
@@ -152,7 +114,7 @@ async function load() {
 (async () => {
   const [s, isPriv] = await Promise.all([antares.settings(), antares.isPrivate()]);
   priv = isPriv;
-  if (priv) { document.body.classList.add('priv'); $('#privnote').hidden = false; $('.word').textContent = 'PRIVADO'; startAnim(); }
+  if (priv) { document.body.classList.add('priv'); $('#privnote').hidden = false; $('.word').textContent = 'PRIVADO'; }
   if (s.blockTrackers && s.blocked) $('#foot').textContent = `${s.blocked.toLocaleString('pt-BR')} anúncios e rastreadores bloqueados nesta sessão`;
   $('#q').placeholder = `Pesquise no ${s.searchEngines[s.searchEngine]} ou digite um endereço`;
   if (location.hash === '#editar' && !priv) { editing = true; }
