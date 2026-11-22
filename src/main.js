@@ -364,6 +364,9 @@ function setupSession(ses, isPrivate) {
       const from = frameUrl || d.referrer || '';
       return cb({ cancel: !from.startsWith('antares://') });
     }
+    // a new page starts: its blocked-tracker count starts from zero (done here, before the page's
+    // own requests, because "did-navigate" can arrive after the first of them)
+    if (d.resourceType === 'mainFrame' && d.webContentsId) blockedPerTab.delete(d.webContentsId);
     try {
       // HTTPS-first: upgrade top-level http navigations
       if (d.resourceType === 'mainFrame' && settings.httpsOnly && d.url.startsWith('http://') && d.method === 'GET') {
@@ -1116,7 +1119,8 @@ class BrowserWin {
     });
     wc.on('did-finish-load', () => { if (t.id === this.activeId && wc.getURL().startsWith(HOME)) this.focusAddress(); });
     wc.on('did-navigate', (e, url) => {
-      blockedPerTab.delete(wc.id); t.blockedPopups = [];
+      t.blockedPopups = [];
+      if (!/^https?:/.test(url)) blockedPerTab.delete(wc.id);
       t.url = url; t.favicon = url.startsWith('antares:') ? '' : t.favicon;
       if (!this.isPrivate) { addHistory(url, wc.getTitle(), ''); broadcastRecentsSoon(); }
       const z = settings.zoom[hostOf(url)];
