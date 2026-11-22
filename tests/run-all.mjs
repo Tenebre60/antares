@@ -39,5 +39,9 @@ for (const f of ['ft.mjs', 'sec2.mjs']) {
 }
 kill(); server.kill();
 console.log(`\n==== ${pass} verificações passaram, ${fail} falharam ====`);
-if (failed.length) { console.log(failed.join('\n')); process.exit(1); }
+if (failed.length) {
+  console.log(failed.join('\n'));
+  try { console.log('\n--- fim do registro do navegador ---\n' + fs.readFileSync('/tmp/e2e-app.log', 'utf8').split('\n').filter((l) => !/dbus|Fontconfig|gles|viz_main/i.test(l)).slice(-80).join('\n')); } catch {}
+  process.exit(1);
+}
 process.exit(0);

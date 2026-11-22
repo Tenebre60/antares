@@ -73,8 +73,10 @@ async function main() {
   const srch = await waitFor(async () => { const t = await activeTab(); return /google\.com\/search\?q=teste/.test(t.url + decodeURIComponent(t.url)) && t; }, 8000);
   check('Texto na barra vira pesquisa no Google', !!srch, srch && srch.url.slice(0, 80));
   await go(A); await go(B);
+  await waitFor(async () => { const t = await activeTab(); return t.title === 'PaginaB' && !t.loading; }, 8000); await sleep(400);
   focusMain(); key('alt+Left');
-  check('Voltar (Alt+←)', !!(await waitFor(async () => (await activeTab()).url === A)));
+  const back = await waitFor(async () => (await activeTab()).url === A);
+  check('Voltar (Alt+←)', !!back, back ? '' : JSON.stringify(await activeTab().catch(() => null)).slice(0, 300));
   focusMain(); key('alt+Right');
   check('Avançar (Alt+→)', !!(await waitFor(async () => (await activeTab()).url === B)));
   focusMain(); key('F5'); await sleep(800);
@@ -170,6 +172,7 @@ async function main() {
 
   /* ---------------- crash recovery */
   await go(A);
+  await waitFor(async () => { const t = await activeTab(); return t.title === 'PaginaA' && !t.loading; }, 8000); await sleep(400);
   { // crash the tab that is on screen (other tabs may have the same address)
     const cands = (await targets()).filter((x) => x.type === 'page' && x.url === A);
     let target = cands[0];
@@ -177,7 +180,7 @@ async function main() {
     if (target) await cdp((x) => x.id === target.id, 'Page.crash').catch(() => {});
   }
   const crashed = await waitFor(async () => { const t = await activeTab(); return t.url.startsWith('antares://error') && t; }, 8000);
-  check('Página que trava mostra aviso de erro', !!crashed);
+  check('Página que trava mostra aviso de erro', !!crashed, crashed ? '' : JSON.stringify({ tab: await activeTab().catch(() => null), targets: (await targets()).map((x) => x.type + ' ' + x.url) }).slice(0, 600));
   focusMain(); await go(B);
   check('Aba continua utilizável após travamento', (await activeTab()).url === B);
 
