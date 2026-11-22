@@ -171,14 +171,10 @@ async function main() {
   check('Janela privada fecha', !!(await waitFor(async () => !(await targets()).some(UI(true)), 8000)));
 
   /* ---------------- crash recovery */
-  await go(A);
-  await waitFor(async () => { const t = await activeTab(); return t.title === 'PaginaA' && !t.loading; }, 8000); await sleep(400);
-  { // crash the tab that is on screen (other tabs may have the same address)
-    const cands = (await targets()).filter((x) => x.type === 'page' && x.url === A);
-    let target = cands[0];
-    for (const c of cands) { const r = await cdp((x) => x.id === c.id, 'Runtime.evaluate', { expression: 'document.visibilityState', returnByValue: true }).catch(() => null); if (r && r.result && r.result.result && r.result.result.value === 'visible') { target = c; break; } }
-    if (target) await cdp((x) => x.id === target.id, 'Page.crash').catch(() => {});
-  }
+  const CR = A + '?travar=1'; // unique address, so the tab on screen is the one that crashes
+  await go(CR);
+  await waitFor(async () => { const t = await activeTab(); return t.url === CR && !t.loading; }, 8000); await sleep(400);
+  await cdp((x) => x.type === 'page' && x.url === CR, 'Page.crash').catch(() => {});
   const crashed = await waitFor(async () => { const t = await activeTab(); return t.url.startsWith('antares://error') && t; }, 8000);
   check('Página que trava mostra aviso de erro', !!crashed, crashed ? '' : JSON.stringify({ tab: await activeTab().catch(() => null), targets: (await targets()).map((x) => x.type + ' ' + x.url) }).slice(0, 600));
   focusMain(); await go(B);
