@@ -1,11 +1,13 @@
 {
   "name": "antares",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Antares — navegador orbital baseado em Chromium",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "node scripts/build-win.js"
+    "dist": "node scripts/build-win.js",
+    "build:linux": "electron-builder --linux dir -c.directories.output=/tmp/distlinux",
+    "test": "node tests/run-all.mjs"
   },
   "keywords": [],
   "author": "Antares",
@@ -30,7 +32,6 @@
       "src/**/*",
       "package.json"
     ],
-    "electronDist": "build/electron-dist",
     "afterPack": "build/afterPack.js",
     "asar": true,
     "win": {
@@ -74,9 +75,21 @@
     "portable": {
       "artifactName": "Antares-Portatil-${version}.exe"
     },
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Tenebre60",
+        "repo": "antares",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
-    "@ghostery/adblocker": "^2.20.3"
+    "@ghostery/adblocker": "^2.20.3",
+    "electron-updater": "^6.8.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tenebre60/antares.git"
   }
 }

@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('chrome2', {
   menu: send('ui:menu'), internal: send('ui:internal'), zoom: send('ui:zoom'), mute: send('ui:mute'),
   layout: send('ui:layout'), win: send('ui:win'), focusPage: send('ui:focus-page'), find: send('ui:find'), stopFind: send('ui:stop-find'),
   moveTab: send('ui:move-tab'), tabMenu: send('ui:tab-menu'), bookmarkMenu: send('ui:bookmark-menu'),
-  popupMenu: send('ui:popup-menu'), siteMenu: send('ui:site-menu'), shieldMenu: send('ui:shield-menu'), openUpdate: send('ui:open-update'), dismissUpdate: send('ui:dismiss-update'),
+  popupMenu: send('ui:popup-menu'), siteMenu: send('ui:site-menu'), shieldMenu: send('ui:shield-menu'), openUpdate: send('ui:open-update'), updateAction: send('ui:update-action'), dismissUpdate: send('ui:dismiss-update'),
   space: send('ui:space'), split: send('ui:split'), capture: send('ui:capture'), device: send('ui:device'), readLater: send('ui:read-later'),
   missionMenu: send('ui:mission-menu'), setSetting: send('ui:set-setting'), paletteRun: send('ui:palette-run'),
   orbit: send('ui:orbit'), mission: send('ui:mission'),

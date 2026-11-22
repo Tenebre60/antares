@@ -343,3 +343,5 @@ body.on-top #device-frame { opacity: .4; }
 .pane-head .ph-host { font-weight: 700; color: var(--text); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; flex: none; }
 .pane-head .ph-warn { color: var(--danger); font-weight: 700; font-size: 11px; flex: none; }
 .pane-head .t { opacity: .7; }
+#infobar.good { border-color: #3ad29f; color: #3ad29f; }
+#infobar.good #infobar-more { color: #3ad29f; font-weight: 600; }

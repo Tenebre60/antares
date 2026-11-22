@@ -28,5 +28,6 @@ if (location.protocol === 'antares:' && window.top === window) {
     universe: inv('antares:universe'), spaceAction: inv('antares:space-action'), orbitAction: inv('antares:orbit-action'),
     missionAction: inv('antares:mission-action'), readLaterAction: inv('antares:readlater-action'), shortcuts: inv('antares:shortcuts'),
     starMap: inv('antares:star-map'), open: inv('antares:open'),
+    appUpdate: inv('antares:app-update'), appUpdateCheck: inv('antares:app-update-check'), appUpdateInstall: inv('antares:app-update-install'), setAutoUpdate: inv('antares:set-auto-update'),
   });
 }

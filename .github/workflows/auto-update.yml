@@ -1,0 +1,82 @@
+# The update robot: once a day it checks for a security fix of Electron/Chromium in the same line.
+# If there is one, it updates, runs every test and, only if they all pass, publishes a new version.
+# New major lines need code review: the robot opens an issue instead of updating by itself.
+name: Robô de atualização
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+concurrency:
+  group: robo
+  cancel-in-progress: false
+jobs:
+  procurar:
+    runs-on: ubuntu-24.04
+    outputs:
+      update: ${{ steps.check.outputs.update }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUR=$(node -p "require('./package-lock.json').packages['node_modules/electron'].version")
+          MAJOR=${CUR%%.*}
+          LATEST=$(npm view "electron@^$MAJOR" version --json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{let v=JSON.parse(d);v=[].concat(v).filter(x=>/^\d+\.\d+\.\d+$/.test(x));v.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));console.log(v.pop())})")
+          NEWEST=$(npm view electron dist-tags.latest)
+          echo "Electron atual $CUR, mais novo da linha $LATEST, mais novo geral $NEWEST"
+          if [ "${NEWEST%%.*}" -gt "$MAJOR" ]; then
+            T="Nova linha do Electron disponível: $NEWEST"
+            if ! gh issue list --state open --search "$T in:title" --json number --jq '.[0].number' | grep -q .; then
+              gh issue create --title "$T" --body "O Antares usa o Electron $CUR. Saiu a linha ${NEWEST%%.*}. O Electron dá correções para as 3 linhas mais recentes, então é preciso migrar antes que a linha $MAJOR deixe de receber correções. Essa migração precisa de revisão do código (peça ao Claude)." || true
+            fi
+          fi
+          if [ "$LATEST" != "$CUR" ] && [ -n "$LATEST" ]; then echo "update=$LATEST" >> "$GITHUB_OUTPUT"; fi
+  atualizar:
+    needs: procurar
+    if: needs.procurar.outputs.update != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Ferramentas de teste
+        run: sudo apt-get update && sudo apt-get install -y xvfb openbox xdotool imagemagick python3-xlib
+      - name: Atualizar o motor e a versão
+        run: |
+          npm install --save-dev "electron@${{ needs.procurar.outputs.update }}"
+          npm version patch --no-git-tag-version
+          sed -i "s/^const BUILD_DATE = '[0-9-]*';/const BUILD_DATE = '$(date -u +%F)';/" src/main.js
+      - name: Testar antes de publicar
+        run: |
+          npm run build:linux
+          Xvfb :99 -screen 0 1400x900x24 &
+          sleep 2
+          DISPLAY=:99 openbox &
+          sleep 1
+          npm test
+      - name: Salvar a nova versão
+        run: |
+          V=$(node -p "require('./package.json').version")
+          git config user.name "Robô de atualização do Antares"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json src/main.js
+          git commit -m "Antares $V: correção de segurança do motor (Electron ${{ needs.procurar.outputs.update }})"
+          git push origin HEAD:main
+  publicar:
+    needs: atualizar
+    uses: ./.github/workflows/release.yml
+    secrets: inherit

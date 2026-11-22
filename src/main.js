@@ -95,7 +95,7 @@ function flushAll() {
   for (const n of Object.keys(timers)) clearTimeout(timers[n]);
   if (!settings || flushed) return;
   flushed = true;
-  const all = { settings, bookmarks, history, downloads: persistableDownloads() };
+  const all = { settings, bookmarks, history, downloads: persistableDownloads(), orbits, missions, readlater: readLater };
   for (const [n, d] of Object.entries(all)) {
     try { writeAtomicSync(dataFile(n), JSON.stringify(d)); } catch (e) { console.error(e); }
   }
@@ -1923,7 +1923,12 @@ uiOn('ui:popup-menu', (w, id) => w.popupMenu(id));
 uiOn('ui:shield-menu', (w, id) => w.shieldMenu(id));
 uiOn('ui:site-menu', (w, id) => w.siteMenu(id));
 uiOn('ui:open-update', (w) => w.openInternal('settings#seguranca'));
-uiOn('ui:dismiss-update', () => { updateInfo.dismissed = updateInfo.latest || (updateInfo.supported ? 'age' : 'eol'); broadcastUpdate(); });
+uiOn('ui:dismiss-update', () => { updateInfo.dismissed = updateKey(); broadcastUpdate(); });
+uiOn('ui:update-action', (w) => {
+  if (appUpdate.state === 'ready') installAppUpdate();
+  else if (appUpdate.mode === 'portable' && appUpdate.state === 'available') w.newTab(appUpdate.url);
+  else w.openInternal('settings#seguranca');
+});
 uiOn('ui:mute', (w, id) => { const t = w.tabs.find((x) => x.id === id); if (t) { t.view.webContents.setAudioMuted(!t.view.webContents.isAudioMuted()); w.sendTab(t); } });
 uiOn('ui:layout', (w, rect, onTop) => {
   const [W, H] = w.win.getContentSize();
@@ -2037,6 +2042,15 @@ internal('antares:settings', () => ({
 }));
 internal('antares:update-filters', async () => ({ ok: await updateFilterLists(true), filters: filterCount(), filtersUpdated: settings.filtersUpdated }));
 internal('antares:check-update', async () => { await checkEngineUpdate(true); return updateInfo; });
+internal('antares:app-update', () => ({ ...appUpdate, current: app.getVersion(), auto: settings.autoUpdate !== false }));
+internal('antares:app-update-check', async () => { await checkAppUpdate(true); await new Promise((r) => setTimeout(r, 1500)); return { ...appUpdate, current: app.getVersion(), auto: settings.autoUpdate !== false }; });
+internal('antares:app-update-install', () => installAppUpdate());
+internal('antares:set-auto-update', (e, on) => {
+  settings.autoUpdate = !!on; save('settings', settings);
+  if (autoUpdater) { autoUpdater.autoDownload = !!on; autoUpdater.autoInstallOnAppQuit = !!on; }
+  if (on) checkAppUpdate(true);
+  broadcastUpdate(); return true;
+});
 internal('antares:clear-exceptions', () => { settings.popupAllow = {}; settings.adblockAllow = {}; settings.permissions = {}; httpExempt.clear(); save('settings', settings); return true; });
 internal('antares:allow-http', (e, url) => {
   // only from the HTTPS warning page, only for the page it is warning about
@@ -2295,11 +2309,13 @@ async function checkEngineUpdate(force = false) {
   try {
     const r = await net.fetch('https://api.github.com/repos/electron/electron/releases?per_page=100', { headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const rel = (await r.json()).filter((x) => !x.prerelease && !x.draft && /^v\d+\.\d+\.\d+$/.test(x.tag_name)).map((x) => x.tag_name.slice(1));
+    const raw = (await r.json()).filter((x) => !x.prerelease && !x.draft && /^v\d+\.\d+\.\d+$/.test(x.tag_name));
+    const rel = raw.map((x) => x.tag_name.slice(1));
     const major = Number(process.versions.electron.split('.')[0]);
     const sameLine = rel.filter((v) => Number(v.split('.')[0]) === major).sort(cmpVer);
     const newestMajor = Math.max(...rel.map((v) => Number(v.split('.')[0])));
     updateInfo.latest = sameLine.length ? sameLine[sameLine.length - 1] : null;
+    { const r2 = raw.find((x) => x.tag_name === 'v' + updateInfo.latest); updateInfo.latestDate = r2 ? Date.parse(r2.published_at) || null : null; }
     updateInfo.supported = newestMajor - major < 3; // Electron supports the latest 3 major lines
     updateInfo.newerMajor = newestMajor > major ? newestMajor : null;
     updateInfo.checked = Date.now(); updateInfo.error = null;
@@ -2309,15 +2325,75 @@ async function checkEngineUpdate(force = false) {
 }
 function updateNeeded() {
   const ageDays = (Date.now() - Date.parse(BUILD_DATE)) / 864e5;
+  if (appUpdate.state === 'ready') return `A atualização do Antares ${appUpdate.version} está pronta. Ela é instalada ao fechar o navegador, ou agora mesmo se você reiniciar.`;
+  if (appUpdate.mode === 'portable' && appUpdate.state === 'available') return `Saiu o Antares ${appUpdate.version}. A versão portátil não se atualiza sozinha: baixe a nova versão.`;
+  // with automatic updates the fixed engine arrives on its own; warn only if it is taking too long
+  const autoCovers = appUpdate.mode === 'auto' && settings.autoUpdate !== false && (!updateInfo.latestDate || Date.now() - updateInfo.latestDate < 7 * 864e5);
+  if (autoCovers && updateInfo.supported) return null;
   if (updateInfo.latest && cmpVer(updateInfo.latest, updateInfo.current) > 0) return `Saiu uma correção de segurança do motor Chromium (Electron ${updateInfo.latest}). Instale uma versão nova do Antares.`;
   if (!updateInfo.supported) return 'Esta versão do motor Chromium não recebe mais correções de segurança. Instale uma versão nova do Antares.';
   if (!updateInfo.checked && ageDays > 60) return 'Esta versão do Antares tem mais de 2 meses e pode estar sem correções de segurança recentes.';
   return null;
 }
+function updateKey() { return appUpdate.state === 'ready' || appUpdate.state === 'available' ? 'app-' + appUpdate.version : (updateInfo.latest || (updateInfo.supported ? 'age' : 'eol')); }
 function broadcastUpdate() {
   const msg = updateNeeded();
-  const key = updateInfo.latest || (updateInfo.supported ? 'age' : 'eol');
-  for (const w of BrowserWin.all) w.send('update', msg && updateInfo.dismissed !== key ? { msg } : null);
+  const action = appUpdate.state === 'ready' ? 'restart' : appUpdate.mode === 'portable' && appUpdate.state === 'available' ? 'download' : 'settings';
+  for (const w of BrowserWin.all) w.send('update', msg && updateInfo.dismissed !== updateKey() ? { msg, action } : null);
+}
+
+/* ------------------------------------------------ Antares automatic updates */
+// New versions are published on GitHub Releases (built and tested by GitHub Actions). The installed
+// version downloads them in the background; the installer's SHA-512 published with the release is
+// checked before anything runs. The portable version only says that a new version exists.
+const UPDATE_REPO = { owner: 'Tenebre60', repo: 'antares' };
+const appUpdate = { mode: 'off', state: 'idle', version: null, percent: 0, error: null, checked: 0, url: `https://github.com/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/releases/latest` };
+let autoUpdater = null;
+function sendAppUpdate() { broadcastUpdate(); }
+function setupAppUpdates() {
+  if (!app.isPackaged || process.platform !== 'win32') { appUpdate.mode = 'off'; return; }
+  if (process.env.PORTABLE_EXECUTABLE_DIR) { appUpdate.mode = 'portable'; return; }
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { console.error('updater', e); appUpdate.mode = 'off'; return; }
+  appUpdate.mode = 'auto';
+  autoUpdater.logger = null;
+  autoUpdater.autoDownload = settings.autoUpdate !== false;
+  autoUpdater.autoInstallOnAppQuit = settings.autoUpdate !== false;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.fullChangelog = false;
+  autoUpdater.on('checking-for-update', () => { appUpdate.state = 'checking'; appUpdate.error = null; });
+  autoUpdater.on('update-not-available', () => { appUpdate.state = 'none'; appUpdate.checked = Date.now(); sendAppUpdate(); });
+  autoUpdater.on('update-available', (info) => { appUpdate.state = autoUpdater.autoDownload ? 'downloading' : 'available'; appUpdate.version = info.version; appUpdate.checked = Date.now(); appUpdate.percent = 0; sendAppUpdate(); });
+  autoUpdater.on('download-progress', (p) => { appUpdate.state = 'downloading'; appUpdate.percent = Math.round(p.percent || 0); });
+  autoUpdater.on('update-downloaded', (info) => { appUpdate.state = 'ready'; appUpdate.version = info.version; appUpdate.percent = 100; sendAppUpdate(); });
+  autoUpdater.on('error', (e) => { appUpdate.state = 'error'; appUpdate.error = String((e && e.message) || e).split('\n')[0].slice(0, 200); appUpdate.checked = Date.now(); sendAppUpdate(); });
+}
+async function checkAppUpdate(manual = false) {
+  if (appUpdate.mode === 'auto') {
+    if (['checking', 'downloading', 'ready'].includes(appUpdate.state)) return appUpdate;
+    if (!manual && settings.autoUpdate === false) return appUpdate;
+    try { await autoUpdater.checkForUpdates(); } catch (e) { appUpdate.state = 'error'; appUpdate.error = String(e.message || e).slice(0, 200); }
+    return appUpdate;
+  }
+  if (appUpdate.mode === 'portable') {
+    try {
+      const r = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const rel = await r.json();
+      const v = String(rel.tag_name || '').replace(/^v/, '');
+      appUpdate.checked = Date.now(); appUpdate.error = null;
+      if (/^\d+\.\d+\.\d+$/.test(v) && cmpVer(v, app.getVersion()) > 0) { appUpdate.state = 'available'; appUpdate.version = v; } else appUpdate.state = 'none';
+    } catch (e) { appUpdate.state = 'error'; appUpdate.error = e.message; }
+    sendAppUpdate();
+  }
+  return appUpdate;
+}
+function installAppUpdate() {
+  if (appUpdate.mode !== 'auto' || appUpdate.state !== 'ready') return false;
+  settings.restoreOnce = true; // reopen the same tabs after the update
+  saveSession(); save('settings', settings, 0);
+  setImmediate(() => { try { autoUpdater.quitAndInstall(true, true); } catch (e) { console.error('install update', e); } });
+  return true;
 }
 
 /* ---------------------------------------------------------------- app life */
@@ -2401,12 +2477,16 @@ app.whenReady().then(() => {
   nativeTheme.on('updated', () => broadcastSettings());
 
   let urls = urlsFromArgv(process.argv);
-  if (!urls.length && settings.startup === 'restore' && settings.lastSession && settings.lastSession.length) urls = settings.lastSession;
+  const restore = settings.startup === 'restore' || settings.restoreOnce;
+  if (settings.restoreOnce) { settings.restoreOnce = false; save('settings', settings); }
+  if (!urls.length && restore && settings.lastSession && settings.lastSession.length) urls = settings.lastSession;
+  setupAppUpdates();
   new BrowserWin({ urls });
 
   app.on('activate', () => { if (!BrowserWin.all.size) new BrowserWin(); });
-  setTimeout(() => { checkEngineUpdate(); updateFilterLists(); }, 20000);
+  setTimeout(() => { checkEngineUpdate(); updateFilterLists(); checkAppUpdate(); }, 20000);
   setInterval(() => { checkEngineUpdate(); updateFilterLists(); }, 6 * 3600e3);
+  setInterval(() => checkAppUpdate(), 3 * 3600e3);
   setInterval(() => saveSession(), 15000); // so "continue where I left off" survives crashes too
   setInterval(() => {
     // put tabs unused for 30 minutes to sleep to free memory

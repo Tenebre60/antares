@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"><title>Configurações</title><link rel="stylesheet" href="pages.css">
 <style>
+  .row-btn { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   section { margin-bottom: 26px; }
   section h2 { font-size: 15px; font-weight: 650; margin: 0 4px 10px; }
   .opt { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-top: 1px solid var(--border); }
@@ -52,8 +53,9 @@
   </div></section>
 
   <section id="seguranca"><h2>Atualizações de segurança</h2><div class="card">
+    <div class="opt"><div class="lbl">Atualizações automáticas<small>O Antares procura versões novas algumas vezes por dia, baixa em segundo plano e instala quando você fecha o navegador. Cada versão é montada e testada automaticamente antes de ser publicada.</small></div><label class="switch"><input type="checkbox" id="autoupd"><span></span></label></div>
+    <div class="opt"><div class="lbl">Antares<small id="app-state">Verificando…</small></div><div class="row-btn"><button id="appinstall" class="primary" hidden>Reiniciar e atualizar</button><button id="appchk">Procurar atualização</button></div></div>
     <div class="opt"><div class="lbl">Motor Chromium<small id="engine-state">Verificando…</small></div><button id="chkupd">Verificar agora</button></div>
-    <div class="opt"><div class="lbl"><small>O Antares verifica sozinho, duas vezes por dia, se saiu uma correção de segurança para o Chromium dele. Quando sair, uma faixa amarela aparece no topo: aí é só instalar uma versão nova do Antares por cima da atual (seus favoritos e histórico são mantidos).</small></div></div>
   </div></section>
 
   <section id="limpar"><h2>Limpar dados de navegação</h2><div class="card">

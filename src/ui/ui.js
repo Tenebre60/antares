@@ -301,7 +301,7 @@ $('#site-icon').addEventListener('mousedown', (e) => {
   e.preventDefault();
   const t = activeTab(); if (t && t.display) api.siteMenu(t.id);
 });
-$('#infobar-more').onclick = () => api.openUpdate();
+$('#infobar-more').onclick = () => api.updateAction();
 $('#infobar-close').onclick = () => api.dismissUpdate();
 $('#newtab').onclick = () => api.newTab();
 $('#downloads').onclick = () => api.internal('downloads');
@@ -759,7 +759,11 @@ api.on('recents', (r) => { state.recents = r || []; renderRightPanel(); });
 api.on('bookmarks', (b) => { state.bookmarks = b; renderBookmarks(); renderRightPanel(); });
 api.on('settings', (s) => { state.settings = s; applyMode(); renderBookmarks(); renderRightPanel(); });
 api.on('downloads', renderDownloads);
-api.on('update', (d) => { $('#infobar').hidden = !d; if (d) $('#infobar-text').textContent = d.msg; requestAnimationFrame(reportLayout); });
+api.on('update', (d) => {
+  $('#infobar').hidden = !d;
+  if (d) { $('#infobar-text').textContent = d.msg; $('#infobar-more').textContent = { restart: 'Reiniciar agora', download: 'Baixar' }[d.action] || 'Saiba mais'; $('#infobar').classList.toggle('good', d.action === 'restart'); }
+  requestAnimationFrame(reportLayout);
+});
 api.on('download-started', () => { const b = $('#downloads'); b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); });
 api.on('focus-address', () => { closePalette(false); address.focus(); address.select(); });
 api.on('show-find', openFind);

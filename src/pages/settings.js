@@ -49,6 +49,21 @@
     $('#updfilters').disabled = false; $('#updfilters').textContent = 'Atualizar agora';
     showFilters(r.filters, r.filtersUpdated); toast(r.ok ? 'Listas atualizadas' : 'Não foi possível atualizar agora');
   };
+  const showApp = (u) => {
+    let t = `Versão ${u.current}. `;
+    if (u.mode === 'off') t += 'Atualização automática disponível só na versão instalada no Windows.';
+    else if (u.mode === 'portable') t += u.state === 'available' ? `Saiu a versão ${u.version}: a versão portátil precisa ser baixada de novo.` : u.state === 'error' ? 'Não foi possível verificar agora.' : u.checked ? '✓ Você está com a versão mais recente.' : 'Ainda não verificado.';
+    else t += ({ checking: 'Procurando…', downloading: `Baixando a versão ${u.version}… ${u.percent || 0}%`, available: `Versão ${u.version} disponível.`, ready: `✓ Versão ${u.version} pronta: será instalada ao fechar o navegador.`, none: `✓ Você está com a versão mais recente${u.checked ? ` (verificado ${new Date(u.checked).toLocaleString('pt-BR')})` : ''}.`, error: `Não foi possível verificar agora${u.error ? ` (${u.error})` : ''}.` }[u.state] || (u.auto ? 'Ainda não verificado.' : 'Atualizações automáticas desligadas.'));
+    $('#app-state').textContent = t;
+    $('#appinstall').hidden = u.state !== 'ready';
+    $('#autoupd').checked = !!u.auto; $('#autoupd').disabled = u.mode !== 'auto';
+    $('#appchk').disabled = u.mode === 'off' || u.state === 'checking' || u.state === 'downloading';
+  };
+  showApp(await antares.appUpdate());
+  $('#autoupd').onchange = async () => { await antares.setAutoUpdate($('#autoupd').checked); toast($('#autoupd').checked ? 'Atualizações automáticas ligadas' : 'Atualizações automáticas desligadas'); showApp(await antares.appUpdate()); };
+  $('#appchk').onclick = async () => { $('#app-state').textContent = 'Procurando…'; showApp(await antares.appUpdateCheck()); };
+  $('#appinstall').onclick = () => antares.appUpdateInstall();
+  setInterval(async () => { if (!document.hidden) showApp(await antares.appUpdate()); }, 2000);
   $('#chkupd').onclick = async () => { $('#engine-state').textContent = 'Verificando…'; showEngine(await antares.checkUpdate()); };
   $('#clrexc').onclick = async () => { await antares.clearExceptions(); $('#exc').textContent = 'Nenhuma exceção salva.'; toast('Exceções removidas'); };
   $('#homeurl').onchange = async () => {
