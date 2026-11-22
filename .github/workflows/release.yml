@@ -30,7 +30,11 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           # a version counts as published only if it is public and has latest.yml (what the browsers read)
           INFO=$(gh release view "v$V" --json isDraft,assets --jq '[.isDraft, ([.assets[].name] | index("latest.yml") != null)] | @tsv' 2>/dev/null || true)
-          if [ "$INFO" = "$(printf 'false\ttrue')" ]; then echo "publish=false" >> "$GITHUB_OUTPUT"; echo "A versão $V já foi publicada."; else echo "publish=true" >> "$GITHUB_OUTPUT"; fi
+          if [ "$INFO" = "$(printf 'false\ttrue')" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"; echo "A versão $V já foi publicada."
+            # tidy up: drafts left over from an earlier attempt of this version
+            for id in $(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"v$V\") | .id"); do gh api -X DELETE "repos/${{ github.repository }}/releases/$id"; done
+          else echo "publish=true" >> "$GITHUB_OUTPUT"; fi
   testes:
     needs: verificar
     if: needs.verificar.outputs.publish == 'true'
@@ -62,6 +66,10 @@ jobs:
           # the tag always points to the code that is being built
           if git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then git push origin ":refs/tags/$V"; fi
           git tag -f "$V" && git push origin "$V"
+          # leftover drafts of this version are removed; one draft is made before uploading, so the
+          # parallel uploads all go to the same release
+          for id in $(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$V\") | .id"); do gh api -X DELETE "repos/${{ github.repository }}/releases/$id"; done
+          gh release create "$V" --draft --verify-tag --title "${{ needs.verificar.outputs.version }}" --notes "Antares ${{ needs.verificar.outputs.version }}"
       - name: Montar e publicar o instalador
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,6 +84,7 @@ jobs:
           grep -qx latest.yml assets.txt
           grep -q "Antares-Setup-.*\.exe$" assets.txt
           gh release edit "$V" --draft=false --latest
+          for id in $(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$V\") | .id"); do gh api -X DELETE "repos/${{ github.repository }}/releases/$id"; done
       - name: Conferir proteções do executável
         shell: bash
         run: |
