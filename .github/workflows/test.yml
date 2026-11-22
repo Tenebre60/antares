@@ -18,10 +18,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -37,3 +37,13 @@ jobs:
           DISPLAY=:99 openbox &
           sleep 1
           npm test
+      - name: Guardar registros e capturas (só quando algo falha)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros-dos-testes
+          path: |
+            /tmp/*.png
+            /tmp/*.log
+          if-no-files-found: ignore
+          retention-days: 7

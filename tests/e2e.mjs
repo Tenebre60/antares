@@ -40,7 +40,9 @@ const activeTab = async (priv = false) => { const s = await uiState(priv); retur
 async function waitFor(fn, ms = 8000, step = 250) { const end = Date.now() + ms; while (Date.now() < end) { try { const v = await fn(); if (v) return v; } catch {} await sleep(step); } return null; }
 function focusMain(priv = false) {
   const ids = sh(`xdotool search --name '— Antares${priv ? ' \\(Privado\\)' : ''}$'`).trim().split('\n').filter(Boolean);
-  if (ids.length) sh(`xdotool windowfocus --sync ${ids[ids.length - 1]}`, 5000);
+  // with a window manager (CI uses openbox) the window must be activated, not only focused
+  for (const id of ids.reverse()) { try { execSync(`xdotool windowactivate --sync ${id}`, { env, timeout: 3000, stdio: 'ignore' }); return; } catch {} }
+  if (ids.length) sh(`xdotool windowfocus --sync ${ids[0]}`, 5000);
 }
 async function go(url, priv = false) {
   focusMain(priv); key('ctrl+l'); await sleep(150); type(url); key('Return');
@@ -168,7 +170,12 @@ async function main() {
 
   /* ---------------- crash recovery */
   await go(A);
-  await cdp(A, 'Page.crash').catch(() => {});
+  { // crash the tab that is on screen (other tabs may have the same address)
+    const cands = (await targets()).filter((x) => x.type === 'page' && x.url === A);
+    let target = cands[0];
+    for (const c of cands) { const r = await cdp((x) => x.id === c.id, 'Runtime.evaluate', { expression: 'document.visibilityState', returnByValue: true }).catch(() => null); if (r && r.result && r.result.result && r.result.result.value === 'visible') { target = c; break; } }
+    if (target) await cdp((x) => x.id === target.id, 'Page.crash').catch(() => {});
+  }
   const crashed = await waitFor(async () => { const t = await activeTab(); return t.url.startsWith('antares://error') && t; }, 8000);
   check('Página que trava mostra aviso de erro', !!crashed);
   focusMain(); await go(B);
