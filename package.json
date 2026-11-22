@@ -1,6 +1,6 @@
 {
   "name": "antares",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Antares — navegador orbital baseado em Chromium",
   "main": "src/main.js",
   "scripts": {

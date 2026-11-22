@@ -97,7 +97,8 @@ function reportLayout() {
   // the light Órbita shell: an octagon with the same hole
   const sh = $('#shell'); const sr = sh.getBoundingClientRect();
   if (sr.width) {
-    const c = Math.min(46, sr.width / 6, sr.height / 6); const W = sr.width, H = sr.height; const ox = sr.left, oy = sr.top;
+    const floating = document.body.classList.contains('floating');
+    const c = Math.min(floating ? 22 : 46, sr.width / 6, sr.height / 6); const W = sr.width, H = sr.height; const ox = sr.left, oy = sr.top;
     // octagon with a rounded hole where the page sits (the page itself has rounded corners)
     const oct = `M${c} 0H${W - c}L${W} ${c}V${H - c}L${W - c} ${H}H${c}L0 ${H - c}V${c}Z`;
     const hx = x - ox, hy = y - oy, r = Math.min(16, w / 2, h / 2);
@@ -739,6 +740,7 @@ api.on('init', (d) => {
   state.collections = d.collections || state.collections; state.recents = d.recents || [];
   document.body.classList.toggle('private', d.isPrivate);
   document.body.classList.toggle('mac', d.platform === 'darwin');
+  document.body.classList.toggle('floating', !!d.floating);
   $('#private-badge').hidden = !d.isPrivate;
   for (const id of ['#readlater', '#mission-add', '#links-edit']) $(id).hidden = d.isPrivate;
   applyMode(); drawStars(); renderBookmarks(); renderDownloads(d.downloads); renderCollections(); renderRightPanel(); renderWinState();
@@ -793,6 +795,26 @@ api.on('toggle-mode', toggleMode);
 api.on('space-rename', (id) => { const sp = state.spaces.find((x) => x.id === id); if (sp) ask('Novo nome da Space', sp.name, (v) => api.space('rename', id, v)); });
 
 if (new URLSearchParams(location.search).get('private') === '1') document.body.classList.add('private');
+/* ---- floating frame: clicks on the transparent area around it go to the desktop,
+   and the frame's edges resize the window (transparent windows have no resize border) */
+let ignoring = false;
+function setIgnore(on) { if (on !== ignoring) { ignoring = on; api.ignoreMouse(on); } }
+document.addEventListener('mousemove', (e) => {
+  if (!document.body.classList.contains('floating') || !document.body.classList.contains('mode-orbit') || overlays.size || resizing) { setIgnore(false); return; }
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  setIgnore(!el || el === document.body || el === document.documentElement || el.id === 'orbit-deco');
+});
+document.addEventListener('mouseleave', () => {});
+let resizing = null;
+document.querySelectorAll('.rz').forEach((h) => {
+  h.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); h.setPointerCapture(e.pointerId);
+    resizing = { edge: h.dataset.e, x: e.screenX, y: e.screenY }; api.resize(resizing.edge, 0, 0, true);
+  });
+  h.addEventListener('pointermove', (e) => { if (resizing) api.resize(resizing.edge, e.screenX - resizing.x, e.screenY - resizing.y, false); });
+  const end = () => { resizing = null; };
+  h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end); h.addEventListener('lostpointercapture', end);
+});
 function tickPod() {
   const d = new Date();
   $('#pod-time').textContent = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

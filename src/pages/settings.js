@@ -8,6 +8,7 @@
   $('#theme').value = s.theme;
   $('#layoutmode').value = s.layoutMode || 'auto';
   $('#rpanel').checked = s.rightPanel !== false;
+  $('#floatframe').checked = s.floatingFrame !== false;
   $('#bbar').checked = s.showBookmarksBar;
   $('#askdl').checked = s.askDownloadLocation;
   $('#trackers').checked = s.blockTrackers;
@@ -37,6 +38,7 @@
   $('#theme').onchange = () => set({ theme: $('#theme').value });
   $('#layoutmode').onchange = () => set({ layoutMode: $('#layoutmode').value });
   $('#rpanel').onchange = () => set({ rightPanel: $('#rpanel').checked });
+  $('#floatframe').onchange = () => set({ floatingFrame: $('#floatframe').checked });
   $('#bbar').onchange = () => set({ showBookmarksBar: $('#bbar').checked });
   $('#askdl').onchange = () => set({ askDownloadLocation: $('#askdl').checked });
   $('#trackers').onchange = () => set({ blockTrackers: $('#trackers').checked });

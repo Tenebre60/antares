@@ -444,3 +444,22 @@ body.mode-orbit #dock-word { position: absolute; left: 50%; bottom: -54px; trans
   body.mode-orbit #pod-emblem { display: none; }
 }
 @media (max-height: 640px) { body.mode-orbit #pod-compass { display: none; } }
+
+/* ---- floating frame (transparent window): the desktop shows around the frame ---- */
+#resizers { display: none; }
+body.floating.mode-orbit { --T: 52px; --L: 64px; --R: 14px; --B: 52px; }
+body.floating.mode-orbit #bg, body.floating.mode-orbit #nebula, body.floating.mode-orbit .drag-strip { display: none; }
+body.floating.mode-orbit #pod-compass { left: 4px; pointer-events: auto; -webkit-app-region: drag; }
+body.floating.mode-orbit #dock-word { color: #fff; text-shadow: 0 0 6px rgba(0, 0, 0, .9), 0 0 2px #000; }
+body.floating.mode-orbit #resizers { display: block; }
+.rz { position: fixed; z-index: 20; -webkit-app-region: no-drag; }
+.rz[data-e=n] { top: calc(var(--T) - 3px); left: calc(var(--L) + 24px); right: calc(var(--R) + 24px); height: 7px; cursor: ns-resize; }
+.rz[data-e=s] { bottom: calc(var(--B) - 3px); left: calc(var(--L) + 24px); right: calc(var(--R) + 24px); height: 7px; cursor: ns-resize; }
+.rz[data-e=w] { left: calc(var(--L) - 3px); top: calc(var(--T) + 24px); bottom: calc(var(--B) + 24px); width: 7px; cursor: ew-resize; }
+.rz[data-e=e] { right: calc(var(--R) - 3px); top: calc(var(--T) + 24px); bottom: calc(var(--B) + 24px); width: 7px; cursor: ew-resize; }
+.rz[data-e=nw] { top: calc(var(--T) - 3px); left: calc(var(--L) - 3px); width: 24px; height: 24px; cursor: nwse-resize; }
+.rz[data-e=ne] { top: calc(var(--T) - 3px); right: calc(var(--R) - 3px); width: 24px; height: 24px; cursor: nesw-resize; }
+.rz[data-e=sw] { bottom: calc(var(--B) - 3px); left: calc(var(--L) - 3px); width: 24px; height: 24px; cursor: nesw-resize; }
+.rz[data-e=se] { bottom: calc(var(--B) - 3px); right: calc(var(--R) - 3px); width: 24px; height: 24px; cursor: nwse-resize; }
+/* Foco (maximized) stays fully painted, also when floating */
+body.floating.mode-focus #orbit-deco { display: none; }

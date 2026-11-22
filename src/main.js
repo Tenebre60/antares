@@ -771,16 +771,33 @@ class BrowserWin {
     this.spaceId = isPrivate ? 'private' : (spaceList()[0] || DEFAULT_SPACES[0]).id;
     this.lastActiveBySpace = {};
 
-    // no Windows title bar: the Antares frame draws its own controls and drag areas
+    // no Windows title bar: the Antares frame draws its own controls and drag areas.
+    // "Floating" frame: the window is transparent around the frame, so in Modo Órbita its panels
+    // (emblem, compass, orb) stick out over the desktop. Can be turned off in Configurações.
+    this.floating = settings.floatingFrame !== false;
     this.win = new BaseWindow({
-      width: 1360, height: 880, minWidth: 640, minHeight: 480, title: 'Antares',
+      width: 1360, height: 900, minWidth: 720, minHeight: 540, title: 'Antares',
       icon: fs.existsSync(ICON) ? ICON : undefined, frame: false,
-      backgroundColor: '#07070a', autoHideMenuBar: true,
+      transparent: this.floating, hasShadow: !this.floating,
+      backgroundColor: this.floating ? '#00000000' : '#07070a', autoHideMenuBar: true,
     });
     this.win.setMenuBarVisibility(false);
-    const sendState = () => { if (!this.win.isDestroyed()) this.send('win-state', { maximized: this.win.isMaximized(), fullscreen: this.win.isFullScreen() }); };
+    this.fakeMax = false;
+    const sendState = () => { if (!this.win.isDestroyed()) this.send('win-state', { maximized: this.isMax(), fullscreen: this.win.isFullScreen() }); };
+    this.win.on('moved', () => {
+      // a "maximized" floating window that was dragged away is a normal window again
+      if (this.fakeMax) { const wa = screen.getDisplayMatching(this.win.getBounds()).workArea; const b = this.win.getBounds(); if (b.x !== wa.x || b.y !== wa.y) { this.fakeMax = false; sendState(); } }
+    });
     for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore']) this.win.on(ev, sendState);
     this.sendState = sendState;
+    this.win.on('closed', () => { this.resizeStart = null; });
+    this.win.on('maximize', () => {
+      // Windows' own maximize (Win+↑, snapping) on a transparent window: use ours instead
+      if (!this.floating) return;
+      const normal = this.win.getNormalBounds();
+      this.win.unmaximize();
+      if (!this.fakeMax) { this.restoreBounds = normal; this.fakeMax = true; this.win.setBounds(screen.getDisplayMatching(normal).workArea); sendState(); }
+    });
 
     this.ui = new WebContentsView({
       webPreferences: { session: getUiSession(), preload: path.join(__dirname, 'preload-ui.js'), contextIsolation: true, sandbox: true, spellcheck: false },
@@ -792,7 +809,7 @@ class BrowserWin {
     this.hookKeys(this.ui.webContents);
 
     this.ui.webContents.once('did-finish-load', () => {
-      this.send('init', { isPrivate, bookmarks, settings: publicSettings(), downloads: downloadsSummary(), platform: process.platform, collections: collectionsSummary(), recents: recentItems() });
+      this.send('init', { isPrivate, bookmarks, settings: publicSettings(), downloads: downloadsSummary(), platform: process.platform, collections: collectionsSummary(), recents: recentItems(), floating: this.floating });
       this.sendSpaces(); this.sendState();
       const msg = updateNeeded(); if (msg) this.send('update', { msg });
       const list = (urls && urls.length ? urls : [null]).map((u) => (u && typeof u === 'object' ? u : { url: u, space: null }));
@@ -847,6 +864,26 @@ class BrowserWin {
   get active() { return this.tabs.find((t) => t.id === this.activeId) || null; }
   send(ch, ...a) { const wc = this.ui.webContents; if (!wc.isDestroyed()) wc.send(ch, ...a); }
 
+  isMax() { return this.floating ? this.fakeMax : this.win.isMaximized(); }
+  toggleMax() {
+    if (!this.floating) { if (this.win.isMaximized()) this.win.unmaximize(); else this.win.maximize(); return; }
+    // transparent windows can't use Windows' own maximize: fill the work area ourselves
+    if (this.fakeMax) { this.fakeMax = false; if (this.restoreBounds) this.win.setBounds(this.restoreBounds); }
+    else { this.restoreBounds = this.win.getBounds(); this.fakeMax = true; this.win.setBounds(screen.getDisplayMatching(this.restoreBounds).workArea); }
+    this.sendState();
+  }
+  resizeBy(edge, dx, dy, start) {
+    // transparent windows have no resize border: the frame's own handles call this
+    if (!this.floating || this.fakeMax || this.win.isFullScreen()) return;
+    if (start || !this.resizeStart) { this.resizeStart = this.win.getBounds(); return; }
+    const b = { ...this.resizeStart }; const [mw, mh] = this.win.getMinimumSize();
+    dx = Math.round(Number(dx) || 0); dy = Math.round(Number(dy) || 0);
+    if (edge.includes('e')) b.width = Math.max(mw, b.width + dx);
+    if (edge.includes('s')) b.height = Math.max(mh, b.height + dy);
+    if (edge.includes('w')) { const w2 = Math.max(mw, b.width - dx); b.x += b.width - w2; b.width = w2; }
+    if (edge.includes('n')) { const h2 = Math.max(mh, b.height - dy); b.y += b.height - h2; b.height = h2; }
+    this.win.setBounds(b);
+  }
   roundPages(views) {
     const r = this.htmlFull ? 0 : (this.radius || 0);
     for (const v of views) { try { if (typeof v.setBorderRadius === 'function' && v._radius !== r) { v.setBorderRadius(r); v._radius = r; } } catch {} }
@@ -1897,7 +1934,7 @@ function publicSettings() {
     homepage: settings.homepage, startup: settings.startup, showBookmarksBar: settings.showBookmarksBar,
     theme: settings.theme, askDownloadLocation: settings.askDownloadLocation, blockTrackers: settings.blockTrackers,
     httpsOnly: settings.httpsOnly, gpc: settings.gpc, tabSleep: settings.tabSleep,
-    layoutMode: settings.layoutMode, rightPanel: settings.rightPanel,
+    layoutMode: settings.layoutMode, rightPanel: settings.rightPanel, floatingFrame: settings.floatingFrame !== false,
     shortcuts: Array.isArray(settings.shortcuts) ? settings.shortcuts : DEFAULT_SHORTCUTS,
   };
 }
@@ -1954,10 +1991,13 @@ uiOn('ui:layout', (w, rect, onTop, radius) => {
 });
 uiOn('ui:win', (w, action) => {
   if (action === 'min') w.win.minimize();
-  else if (action === 'max') { if (w.win.isMaximized()) w.win.unmaximize(); else w.win.maximize(); }
+  else if (action === 'max') w.toggleMax();
   else if (action === 'close') w.win.close();
   else if (action === 'fullscreen') w.win.setFullScreen(!w.win.isFullScreen());
 });
+// (Linux can't forward mouse moves to a click-through window, so it never becomes click-through there)
+uiOn('ui:ignore-mouse', (w, on) => { if (w.floating && process.platform !== 'linux') { try { w.win.setIgnoreMouseEvents(!!on, { forward: true }); } catch {} } });
+uiOn('ui:resize', (w, edge, dx, dy, start) => { if (/^(n|s|e|w|ne|nw|se|sw)$/.test(String(edge))) w.resizeBy(String(edge), dx, dy, !!start); });
 uiOn('ui:space', (w, action, id, name) => {
   if (w.isPrivate) return;
   if (action === 'switch') w.switchSpace(id);
@@ -2072,7 +2112,8 @@ internal('antares:allow-http', (e, url) => {
   } catch { return false; }
 });
 internal('antares:set-settings', (e, patch) => {
-  const allowed = ['searchEngine', 'homepage', 'startup', 'showBookmarksBar', 'theme', 'askDownloadLocation', 'blockTrackers', 'httpsOnly', 'gpc', 'tabSleep', 'layoutMode', 'rightPanel'];
+  const allowed = ['searchEngine', 'homepage', 'startup', 'showBookmarksBar', 'theme', 'askDownloadLocation', 'blockTrackers', 'httpsOnly', 'gpc', 'tabSleep', 'layoutMode', 'rightPanel', 'floatingFrame'];
+  if ('floatingFrame' in patch) patch.floatingFrame = !!patch.floatingFrame;
   if ('layoutMode' in patch && !['auto', 'orbit', 'focus'].includes(patch.layoutMode)) delete patch.layoutMode;
   if ('rightPanel' in patch) patch.rightPanel = !!patch.rightPanel;
   if ('homepage' in patch && !(isWebUrl(patch.homepage) || patch.homepage === HOME)) delete patch.homepage;
