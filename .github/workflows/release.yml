@@ -59,9 +59,9 @@ jobs:
           V="v${{ needs.verificar.outputs.version }}"
           # an incomplete release of this version (without latest.yml) is removed and made again
           if gh release view "$V" >/dev/null 2>&1; then gh release delete "$V" --yes; fi
-          if ! git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then
-            git tag "$V" && git push origin "$V"
-          fi
+          # the tag always points to the code that is being built
+          if git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then git push origin ":refs/tags/$V"; fi
+          git tag -f "$V" && git push origin "$V"
       - name: Montar e publicar o instalador
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
