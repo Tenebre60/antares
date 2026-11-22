@@ -69,9 +69,6 @@ async function main() {
   const tA = await go(A); check('Digitar endereço na barra navega', !!tA, tA && tA.url);
   await waitFor(async () => (await activeTab()).title === 'PaginaA', 5000);
   check('Título da aba atualiza', (await activeTab()).title === 'PaginaA');
-  focusMain(); key('ctrl+l'); type('teste antares navegador'); key('Return');
-  const srch = await waitFor(async () => { const t = await activeTab(); return /google\.com\/search\?q=teste/.test(t.url + decodeURIComponent(t.url)) && t; }, 8000);
-  check('Texto na barra vira pesquisa no Google', !!srch, srch && srch.url.slice(0, 80));
   await go(A); await go(B);
   await waitFor(async () => { const t = await activeTab(); return t.title === 'PaginaB' && !t.loading; }, 8000); await sleep(400);
   focusMain(); key('alt+Left');
@@ -81,6 +78,10 @@ async function main() {
   check('Avançar (Alt+→)', !!(await waitFor(async () => (await activeTab()).url === B)));
   focusMain(); key('F5'); await sleep(800);
   check('Recarregar (F5) mantém a página', (await activeTab()).url === B);
+  focusMain(); key('ctrl+l'); type('teste antares navegador'); key('Return');
+  const srch = await waitFor(async () => { const t = await activeTab(); return /google\.com\/search\?q=teste/.test(t.url + decodeURIComponent(t.url)) && t; }, 8000);
+  check('Texto na barra vira pesquisa no Google', !!srch, srch && srch.url.slice(0, 80));
+  await go(B);
 
   /* ---------------- tabs */
   let n0 = (await uiState()).tabs.length;
@@ -150,7 +151,8 @@ async function main() {
   check('Site não abre página interna (antares://)', (await activeTab()).url.startsWith(EVIL));
   check('Site não abre aba data: falsa', !tl.some((u) => u.startsWith('data:')));
   check('Pop-up automático bloqueado (ícone aparece)', (await ev(UI(), "!document.getElementById('popups').hidden")) === true);
-  check('Bloqueador barrou anúncios/rastreadores', Number(await ev(UI(), "document.getElementById('shield-n').textContent")) >= 2);
+  const nBlocked = await waitFor(async () => { const n = Number(await ev(UI(), "document.getElementById('shield-n').textContent")); return n >= 2 && n; }, 8000);
+  check('Bloqueador barrou anúncios/rastreadores', !!nBlocked, String(await ev(UI(), "document.getElementById('shield-n').textContent + ' / ' + document.getElementById('shield').title")));
   await ev(EVIL, "location.href='/redir'; 1"); await sleep(2500);
   check('Redirecionamento para página interna bloqueado', (await activeTab()).url.startsWith(EVIL));
   check('Notificações não são liberadas sem perguntar', (await ev(EVIL, 'Notification.permission')) === 'denied');
