@@ -124,7 +124,7 @@ const DEFAULT_SETTINGS = {
   spaces: null,
   shortcuts: null,
 };
-const BUILD_DATE = '2026-11-22';
+const BUILD_DATE = '2026-11-25';
 let settings, bookmarks, history;
 let orbits = [], missions = [], readLater = [];
 const thumbs = new Map(); // url -> small JPEG data URL of the page (for "Recentes")
